@@ -1,0 +1,35 @@
+# Maintainer: Charan Balaji <noreply@example.invalid>
+#
+# NOT BUILD-TESTED — there's no makepkg/pacman in the environment this was
+# written in, so this hasn't gone through an actual `makepkg` run the way
+# the RPM spec was actually built and lint-fixed with rpmbuild/rpmlint (see
+# packaging/rpm/ and the top-level PROGRESS.md for that distinction). The
+# syntax follows standard PKGBUILD conventions; treat it as a solid draft,
+# not a verified package.
+
+pkgname=aetheros-dotfiles
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="AetherOS Hyprland dotfiles and Quickshell desktop shell"
+arch=('any')
+url="https://github.com/example/aetheros-dotfiles"
+license=('GPL-3.0-or-later')
+depends=('hyprland' 'kitty' 'zsh')
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')  # replace with a real checksum once this has an actual release tarball
+
+package() {
+    install -dm755 "$pkgdir/usr/share/$pkgname"
+    cp -a "$srcdir/$pkgname/." "$pkgdir/usr/share/$pkgname/"
+    rm -rf "$pkgdir/usr/share/$pkgname/.git" "$pkgdir/usr/share/$pkgname/.github"
+    find "$pkgdir/usr/share/$pkgname" -name ".gitignore" -delete
+
+    install -dm755 "$pkgdir/usr/bin"
+    ln -s "/usr/share/$pkgname/scripts/setup-symlinks.sh" "$pkgdir/usr/bin/aetheros-dotfiles-setup"
+    ln -s "/usr/share/$pkgname/scripts/doctor.sh" "$pkgdir/usr/bin/aetheros-dotfiles-doctor"
+    ln -s "/usr/share/$pkgname/scripts/bin/aether" "$pkgdir/usr/bin/aether"
+    ln -s "/usr/share/$pkgname/scripts/bin/aether-screenshot" "$pkgdir/usr/bin/aether-screenshot"
+    ln -s "/usr/share/$pkgname/scripts/bin/aether-wallpaper" "$pkgdir/usr/bin/aether-wallpaper"
+
+    install -Dm644 "$srcdir/$pkgname/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

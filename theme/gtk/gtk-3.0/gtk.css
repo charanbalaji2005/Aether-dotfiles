@@ -1,0 +1,227 @@
+/*
+ * AetherOS GTK3 theme.
+ *
+ * Colors mirror config/quickshell/aether-shell/theme/Colors.qml — keep the
+ * two in sync if you change the shell's palette. This is an original
+ * AetherOS stylesheet, not a copy of Adwaita or any other existing theme;
+ * GTK has no fully theme-less fallback, so gtk-theme-name in settings.ini
+ * still points at a base theme (Adwaita-dark) for icon/widget structure —
+ * this file overrides its colors, borders, and corner radii.
+ *
+ * NOT visually verified — no display server or GTK installation exists in
+ * the environment this was written in. Syntax follows documented GTK3 CSS
+ * node/property conventions; if a selector doesn't take effect on your GTK
+ * version, that's the kind of thing that needs a real GTK session to catch.
+ */
+
+@define-color aether_bg0 #0A0C12;
+@define-color aether_bg1 #12141C;
+@define-color aether_bg2 #1B1E29;
+@define-color aether_glass #1E212E;
+@define-color aether_border #2A2E3D;
+@define-color aether_border_strong #3A3F52;
+@define-color aether_accent #7C9CFF;
+@define-color aether_accent_alt #B48CFF;
+@define-color aether_text #EDEFF7;
+@define-color aether_text_secondary #AEB3C7;
+@define-color aether_text_muted #7E8399;
+@define-color aether_success #4ADE80;
+@define-color aether_warning #FBBF24;
+@define-color aether_danger #F87171;
+
+/* GTK's own theme-wide named colors — many stock widgets and third-party
+   apps reference these directly rather than #hex values. */
+@define-color theme_bg_color @aether_bg1;
+@define-color theme_fg_color @aether_text;
+@define-color theme_base_color @aether_bg0;
+@define-color theme_text_color @aether_text;
+@define-color theme_selected_bg_color @aether_accent;
+@define-color theme_selected_fg_color @aether_bg0;
+@define-color insensitive_bg_color @aether_bg2;
+@define-color insensitive_fg_color @aether_text_muted;
+@define-color borders @aether_border;
+
+window {
+    background-color: @aether_bg1;
+    color: @aether_text;
+}
+
+headerbar {
+    background-color: @aether_bg2;
+    color: @aether_text;
+    border-bottom: 1px solid @aether_border;
+    box-shadow: none;
+    min-height: 40px;
+}
+
+button {
+    background-color: @aether_glass;
+    color: @aether_text;
+    border: 1px solid @aether_border;
+    border-radius: 8px;
+    padding: 4px 12px;
+    transition: background-color 120ms ease, border-color 120ms ease;
+}
+button:hover {
+    background-color: @aether_bg2;
+    border-color: @aether_border_strong;
+}
+button:active,
+button:checked {
+    background-color: alpha(@aether_accent, 0.25);
+    border-color: @aether_accent;
+}
+button:disabled {
+    background-color: @aether_bg1;
+    color: @aether_text_muted;
+    border-color: @aether_border;
+}
+button.suggested-action {
+    background-color: @aether_accent;
+    color: @aether_bg0;
+    border-color: @aether_accent;
+}
+button.suggested-action:hover {
+    background-color: shade(@aether_accent, 1.08);
+}
+button.destructive-action {
+    background-color: @aether_danger;
+    color: @aether_bg0;
+    border-color: @aether_danger;
+}
+
+entry {
+    background-color: @aether_bg0;
+    color: @aether_text;
+    border: 1px solid @aether_border;
+    border-radius: 8px;
+    padding: 6px 10px;
+    caret-color: @aether_accent;
+}
+entry:focus {
+    border-color: @aether_accent;
+    box-shadow: 0 0 0 1px alpha(@aether_accent, 0.4);
+}
+entry:disabled {
+    color: @aether_text_muted;
+}
+entry selection {
+    background-color: alpha(@aether_accent, 0.35);
+    color: @aether_text;
+}
+
+switch {
+    background-color: alpha(@aether_text_muted, 0.3);
+    border: none;
+    border-radius: 999px;
+    min-width: 40px;
+    min-height: 22px;
+}
+switch:checked {
+    background-color: @aether_accent;
+}
+switch slider {
+    background-color: white;
+    border-radius: 999px;
+    min-width: 18px;
+    min-height: 18px;
+    margin: 2px;
+}
+
+scale trough {
+    background-color: alpha(@aether_text_muted, 0.25);
+    border-radius: 999px;
+    min-height: 4px;
+}
+scale trough highlight {
+    background-color: @aether_accent;
+    border-radius: 999px;
+}
+scale slider {
+    background-color: @aether_text;
+    border-radius: 999px;
+    min-width: 14px;
+    min-height: 14px;
+}
+
+check,
+radio {
+    background-color: @aether_bg0;
+    border: 1px solid @aether_border_strong;
+    border-radius: 4px;
+    min-width: 16px;
+    min-height: 16px;
+}
+radio {
+    border-radius: 999px;
+}
+check:checked,
+radio:checked {
+    background-color: @aether_accent;
+    border-color: @aether_accent;
+}
+
+menu,
+.menu,
+popover {
+    background-color: @aether_bg2;
+    color: @aether_text;
+    border: 1px solid @aether_border;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px alpha(black, 0.4);
+}
+menuitem:hover,
+.menu menuitem:hover {
+    background-color: alpha(@aether_accent, 0.18);
+    color: @aether_text;
+}
+
+notebook > header {
+    background-color: @aether_bg2;
+    border-color: @aether_border;
+}
+notebook > header tab {
+    color: @aether_text_secondary;
+    padding: 6px 12px;
+}
+notebook > header tab:checked {
+    color: @aether_text;
+    border-bottom: 2px solid @aether_accent;
+}
+
+scrollbar {
+    background-color: transparent;
+}
+scrollbar slider {
+    background-color: alpha(@aether_text_muted, 0.4);
+    border-radius: 999px;
+    min-width: 8px;
+    min-height: 8px;
+}
+scrollbar slider:hover {
+    background-color: alpha(@aether_text_muted, 0.6);
+}
+
+tooltip {
+    background-color: @aether_bg2;
+    color: @aether_text;
+    border: 1px solid @aether_border;
+    border-radius: 8px;
+    padding: 4px 8px;
+}
+
+selection,
+*:selected {
+    background-color: alpha(@aether_accent, 0.35);
+    color: @aether_text;
+}
+
+.sidebar,
+list {
+    background-color: @aether_bg1;
+    color: @aether_text_secondary;
+}
+list row:selected {
+    background-color: alpha(@aether_accent, 0.2);
+    color: @aether_text;
+}

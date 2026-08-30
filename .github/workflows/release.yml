@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  # Run the full test suite one more time against the exact commit being
+  # tagged, before building anything release-bound.
+  verify:
+    uses: ./.github/workflows/ci.yml
+
+  build-tarball:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build source tarball
+        run: bash packaging/tarball/build-tarball.sh "${{ github.ref_name }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tarball
+          path: dist/*
+
+  build-rpm:
+    needs: verify
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: dnf install -y rpm-build rpmlint tar gzip
+      - name: Build source archive matching Source0
+        run: |
+          mkdir -p /root/rpmbuild/SOURCES /root/rpmbuild/SPECS
+          tar -czf /root/rpmbuild/SOURCES/aetheros-dotfiles.tar.gz \
+              --exclude='.git' --exclude='dist' --exclude='*.bak.*' \
+              --transform 's,^\.,aetheros-dotfiles,' .
+          cp packaging/rpm/aetheros-dotfiles.spec /root/rpmbuild/SPECS/
+      - name: rpmlint the spec
+        run: rpmlint /root/rpmbuild/SPECS/aetheros-dotfiles.spec || true
+      - name: Build RPM
+        run: rpmbuild --define "_topdir /root/rpmbuild" -bb /root/rpmbuild/SPECS/aetheros-dotfiles.spec
+      - name: rpmlint the built package
+        run: rpmlint /root/rpmbuild/RPMS/noarch/*.rpm || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm
+          path: /root/rpmbuild/RPMS/noarch/*.rpm
+
+  # Arch packaging (packaging/arch/PKGBUILD) is intentionally NOT built
+  # here — it hasn't been run through makepkg even once yet (see the
+  # warning at the top of that file). Building it in CI before it's ever
+  # been built manually would be building on top of an unverified
+  # assumption. Once someone's actually run makepkg against it
+  # successfully, add a build-arch job here following the same pattern
+  # as build-rpm.
+
+  publish:
+    needs: [build-tarball, build-rpm]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            tarball/*
+            rpm/*
+          generate_release_notes: true

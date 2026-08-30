@@ -1,0 +1,81 @@
+# AetherOS .zshrc
+
+# ── History ──────────────────────────────────────────────────────────────
+HISTFILE="$HOME/.zsh_history"
+HISTSIZE=10000
+SAVEHIST=10000
+setopt HIST_IGNORE_DUPS
+setopt HIST_IGNORE_SPACE
+setopt SHARE_HISTORY
+setopt APPEND_HISTORY
+setopt INC_APPEND_HISTORY
+
+# ── Completion ───────────────────────────────────────────────────────────
+autoload -Uz compinit
+compinit
+zstyle ':completion:*' menu select
+zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
+zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
+
+# ── Key bindings ─────────────────────────────────────────────────────────
+bindkey -e   # emacs-style keybindings (Ctrl+A/E, etc.)
+bindkey '^[[1;5C' forward-word
+bindkey '^[[1;5D' backward-word
+bindkey '^[[3~' delete-char
+
+# ── PATH ─────────────────────────────────────────────────────────────────
+export PATH="$HOME/.local/bin:$HOME/dotfiles/scripts/bin:$PATH"
+
+# ── Environment ──────────────────────────────────────────────────────────
+export EDITOR="${EDITOR:-nvim}"
+export VISUAL="$EDITOR"
+export TERMINAL="kitty"
+export BROWSER="${BROWSER:-firefox}"
+
+# ── Aliases ──────────────────────────────────────────────────────────────
+if command -v eza >/dev/null 2>&1; then
+    alias ls='eza --icons --group-directories-first'
+    alias ll='eza --icons --group-directories-first -l'
+    alias la='eza --icons --group-directories-first -la'
+    alias lt='eza --icons --group-directories-first --tree'
+else
+    alias ll='ls -lh'
+    alias la='ls -lAh'
+fi
+
+if command -v bat >/dev/null 2>&1; then
+    alias cat='bat --paging=never'
+fi
+
+alias grep='grep --color=auto'
+alias ..='cd ..'
+alias ...='cd ../..'
+alias mkdir='mkdir -p'
+
+alias g='git'
+alias gs='git status -sb'
+alias ga='git add'
+alias gc='git commit'
+alias gp='git push'
+alias gl='git log --oneline --graph --decorate -20'
+alias gco='git checkout'
+
+alias hyprreload='hyprctl reload'
+alias shellreload='qs -c aether-shell ipc call launcher hide 2>/dev/null; pkill -f "qs -c aether-shell"; qs -c aether-shell >/tmp/aether-shell.log 2>&1 & disown'
+
+# ── Prompt ───────────────────────────────────────────────────────────────
+# Lightweight two-line prompt, no external framework required.
+# git branch shown when inside a repo; exit code shown in red when non-zero.
+autoload -Uz vcs_info
+setopt PROMPT_SUBST
+zstyle ':vcs_info:git:*' formats ' %F{5}(%b)%f'
+precmd() { vcs_info }
+
+PROMPT='%F{4}%~%f${vcs_info_msg_0_}
+%(?.%F{6}.%F{1})❯%f '
+
+# ── Syntax bits some distros ship as separate packages ──────────────────
+[ -f /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh ] && \
+    source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
+[ -f /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ] && \
+    source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh

@@ -1,0 +1,36 @@
+name: Tests
+
+on:
+  workflow_call:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  hyprland-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Hyprland config syntax/wiring check
+        run: bash tests/hyprland/test_config_syntax.sh
+
+  qml-structure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: QML brace/paren/import structural check
+        run: bash tests/shell/test_qml_structure.sh
+
+  install-lifecycle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Symlink / backup / restore / uninstall integration test
+        run: bash tests/integration/test_symlink_lifecycle.sh
+
+  # Explicitly NOT run in CI: anything needing a live Quickshell/Qt6/
+  # Hyprland/D-Bus session (no display server on GitHub's runners for this
+  # kind of setup without substantial additional work — see
+  # tests/services/README.md). Listed here so it's visible in the workflow
+  # file, not silently absent.

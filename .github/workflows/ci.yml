@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    uses: ./.github/workflows/lint.yml
+
+  test:
+    uses: ./.github/workflows/tests.yml
+
+  build-verify:
+    # "Build" for a dotfiles repo means: every entry-point script parses,
+    # every config file this repo ships is present and non-empty, and the
+    # package lists aren't empty. This is NOT a package build (see
+    # release.yml for the one real build artifact this repo produces —
+    # a source tarball).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax-check every entry-point script
+        run: |
+          set -e
+          for f in install.sh scripts/*.sh scripts/bin/aether; do
+            echo "bash -n $f"
+            bash -n "$f"
+          done
+      - name: Confirm required top-level files exist
+        run: |
+          set -e
+          for f in README.md LICENSE THIRD_PARTY.md ARCHITECTURE.md \
+                   config/hypr/hyprland.conf config/quickshell/aether-shell/shell.qml \
+                   config/kitty/kitty.conf config/zsh/.zshrc \
+                   packages/fedora/packages.txt packages/arch/packages.txt; do
+            if [ ! -s "$f" ]; then
+              echo "MISSING or EMPTY: $f"
+              exit 1
+            fi
+          done
+          echo "All required files present."

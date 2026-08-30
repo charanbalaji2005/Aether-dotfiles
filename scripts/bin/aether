@@ -1,0 +1,117 @@
+#!/usr/bin/bash
+# aether — convenience CLI for AetherOS session/shell operations.
+# This is a fresh implementation for this dotfiles repo, not a recovery of
+# any earlier version — install it via scripts/setup-symlinks.sh (it links
+# ~/.local/bin/aether -> this file).
+
+set -euo pipefail
+
+SHELL_NAME="aether-shell"
+
+usage() {
+    cat <<'EOF'
+aether — AetherOS session helper
+
+Usage: aether <command> [args]
+
+Commands:
+  reload            Reload Hyprland config and restart the shell
+  shell-reload      Restart only the Quickshell shell (aether-shell)
+  lock              Lock the session
+  screenshot [full|region]   Take a screenshot (default: full)
+  launcher          Toggle the application launcher
+  clipboard         Toggle clipboard history
+  dashboard         Toggle the dashboard
+  wallpaper [args]  Wallpaper manager (random, next, prev, select, set)
+  logs              Tail the shell's log file
+  doctor            Check that required dependencies are installed
+  update            Pull latest dotfiles and re-apply symlinks
+  help              Show this message
+EOF
+}
+
+ipc() {
+    qs -c "$SHELL_NAME" ipc call "$1" "$2"
+}
+
+cmd_reload() {
+    hyprctl reload
+    cmd_shell_reload
+}
+
+cmd_shell_reload() {
+    if command -v systemctl >/dev/null 2>&1 && systemctl --user is-active --quiet aether-shell.service 2>/dev/null; then
+        systemctl --user restart aether-shell.service
+        echo "aether-shell restarted (systemd: aether-shell.service)"
+    else
+        pkill -x qs 2>/dev/null || pkill -f "qs -c $SHELL_NAME" 2>/dev/null || true
+        sleep 0.3
+        nohup qs -c "$SHELL_NAME" >/tmp/aether-shell.log 2>&1 &
+        disown
+        echo "aether-shell restarted (log: /tmp/aether-shell.log)"
+    fi
+}
+
+cmd_logs() {
+    if command -v systemctl >/dev/null 2>&1 && systemctl --user is-active --quiet aether-shell.service 2>/dev/null; then
+        journalctl --user -u aether-shell.service -f
+    elif [ -f /tmp/aether-shell.log ]; then
+        tail -f /tmp/aether-shell.log
+    else
+        echo "No /tmp/aether-shell.log found and aether-shell.service is not active." >&2
+    fi
+}
+
+cmd_doctor() {
+    local script_dir
+    script_dir="$(dirname "$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")")"
+    if [ -f "$script_dir/../doctor.sh" ]; then
+        exec "$script_dir/../doctor.sh"
+    elif command -v aetheros-dotfiles-doctor >/dev/null 2>&1; then
+        exec aetheros-dotfiles-doctor
+    elif [ -f /usr/share/aetheros-dotfiles/scripts/doctor.sh ]; then
+        exec /usr/share/aetheros-dotfiles/scripts/doctor.sh
+    else
+        echo "Could not locate doctor.sh" >&2
+        exit 1
+    fi
+}
+
+cmd_wallpaper() {
+    local script_dir
+    script_dir="$(dirname "$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")")"
+    if [ -f "$script_dir/aether-wallpaper" ]; then
+        exec "$script_dir/aether-wallpaper" "$@"
+    elif command -v aether-wallpaper >/dev/null 2>&1; then
+        exec aether-wallpaper "$@"
+    else
+        echo "Could not locate aether-wallpaper helper" >&2
+        exit 1
+    fi
+}
+
+case "${1:-help}" in
+    reload) cmd_reload ;;
+    shell-reload) cmd_shell_reload ;;
+    lock) ipc sessionlock lock ;;
+    screenshot)
+        mode="${2:-full}"
+        ipc screenshot "$mode"
+        ;;
+    launcher) ipc launcher toggle ;;
+    clipboard) ipc clipboard toggle ;;
+    dashboard) ipc dashboard toggle ;;
+    wallpaper)
+        shift
+        cmd_wallpaper "$@"
+        ;;
+    logs) cmd_logs ;;
+    doctor) cmd_doctor ;;
+    update) "$(dirname "$(readlink -f "$0")")/../update.sh" ;;
+    help|-h|--help) usage ;;
+    *)
+        echo "Unknown command: $1" >&2
+        usage >&2
+        exit 1
+        ;;
+esac

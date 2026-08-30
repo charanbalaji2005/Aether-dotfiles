@@ -1,0 +1,54 @@
+# AetherOS Dotfiles — .gitignore
+
+# ── Backup and Swap Files ──────────────────────────────────
+*.bak
+*.bak.*
+*.old
+*.orig
+*.rej
+*~
+*.swp
+*.swo
+*.tmp
+*.temp
+
+# ── Operating System & Editor Metadata ─────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+
+# Editors & IDEs
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# ── Build, Dist & Packaging Artifacts ─────────────────────
+dist/
+build/
+_build/
+bin/obj/
+*.tar
+*.tar.gz
+*.tar.xz
+*.tar.zst
+*.rpm
+*.deb
+*.pkg.tar.*
+src/
+pkg/
+
+# ── Local Runtime & Test Artifacts ─────────────────────────
+*.log
+/tmp/
+.cache/
+.aetheros-backups/
+current_wallpaper
+node_modules/
+__pycache__/
+*.pyc

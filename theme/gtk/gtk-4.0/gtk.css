@@ -1,0 +1,74 @@
+/*
+ * AetherOS GTK4 theme.
+ *
+ * GTK4's CSS engine diverged from GTK3's in ways that make a full port
+ * risky to write without a live GTK4 session to check against — many
+ * libadwaita-based apps (most modern GNOME apps) pull colors from
+ * libadwaita's own named-color system rather than plain GTK CSS variables,
+ * and several GTK3 node selectors were renamed or removed in GTK4. Rather
+ * than guess at the full surface area the way the GTK3 stylesheet does
+ * with higher confidence, this covers the smaller set of selectors that
+ * have stayed stable across the GTK3->GTK4 transition: colors on the most
+ * common interactive widgets. Extend this once you can check it against a
+ * real GTK4 app.
+ *
+ * Colors mirror config/quickshell/aether-shell/theme/Colors.qml.
+ */
+
+@define-color aether_bg0 #0A0C12;
+@define-color aether_bg1 #12141C;
+@define-color aether_bg2 #1B1E29;
+@define-color aether_border #2A2E3D;
+@define-color aether_border_strong #3A3F52;
+@define-color aether_accent #7C9CFF;
+@define-color aether_text #EDEFF7;
+@define-color aether_text_secondary #AEB3C7;
+@define-color aether_text_muted #7E8399;
+
+window {
+    background-color: @aether_bg1;
+    color: @aether_text;
+}
+
+headerbar {
+    background-color: @aether_bg2;
+    color: @aether_text;
+}
+
+button {
+    background-color: @aether_bg2;
+    color: @aether_text;
+    border: 1px solid @aether_border;
+    border-radius: 8px;
+}
+button:hover {
+    background-color: @aether_border;
+}
+button.suggested-action {
+    background-color: @aether_accent;
+    color: @aether_bg0;
+}
+
+entry {
+    background-color: @aether_bg0;
+    color: @aether_text;
+    border: 1px solid @aether_border;
+    border-radius: 8px;
+    caret-color: @aether_accent;
+}
+entry:focus {
+    border-color: @aether_accent;
+}
+
+switch {
+    background-color: alpha(@aether_text_muted, 0.3);
+    border-radius: 999px;
+}
+switch:checked {
+    background-color: @aether_accent;
+}
+
+scrollbar slider {
+    background-color: alpha(@aether_text_muted, 0.4);
+    border-radius: 999px;
+}

@@ -1,0 +1,68 @@
+# AetherOS package list (Arch Linux / pacman)
+# One package per line, comments start with #.
+# scripts/bootstrap.sh reads this and installs everything with `pacman -S`.
+# Quickshell has an AUR package (quickshell-git) — bootstrap.sh uses that
+# instead of building from source on Arch, since Arch users typically have
+# an AUR helper. If you don't, install quickshell-git manually first.
+
+# Compositor
+hyprland
+xdg-desktop-portal-hyprland
+hyprpolkitagent
+hyprpaper
+
+# Wayland/session essentials
+qt6-base
+qt6-declarative
+qt6-wayland
+qt6ct
+
+# Audio
+pipewire
+pipewire-pulse
+wireplumber
+
+# Power
+upower
+brightnessctl
+
+# Network
+networkmanager
+
+# Bluetooth
+bluez
+bluez-utils
+
+# Media
+playerctl
+
+# Clipboard / screenshots
+wl-clipboard
+grim
+slurp
+cliphist
+
+# Terminal + shell
+kitty
+zsh
+zsh-autosuggestions
+zsh-syntax-highlighting
+
+# CLI niceties (optional)
+eza
+bat
+
+# Fonts
+ttf-jetbrains-mono
+noto-fonts
+noto-fonts-emoji
+
+# GTK app theming consistency
+gtk3
+gtk4
+
+# Build tooling (only needed if building Quickshell from source instead of AUR)
+cmake
+ninja
+gcc
+git

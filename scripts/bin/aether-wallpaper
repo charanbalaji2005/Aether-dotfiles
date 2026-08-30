@@ -1,0 +1,215 @@
+#!/usr/bin/bash
+# aether-wallpaper — Wallpaper management utility for AetherOS.
+# Supports random wallpaper selection, cycling, manual path setting, and GUI picker.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/../.." 2>/dev/null && pwd || true)"
+
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/aether-shell"
+STATE_FILE="$CONFIG_DIR/current_wallpaper"
+SHELL_NAME="aether-shell"
+
+usage() {
+    cat <<'EOF'
+aether-wallpaper — AetherOS wallpaper manager
+
+Usage: aether-wallpaper <command> [args]
+
+Commands:
+  random              Pick and apply a random wallpaper
+  next                Apply the next wallpaper in collection
+  prev                Apply the previous wallpaper in collection
+  set <path>          Apply a specific wallpaper image file
+  select              Toggle the interactive visual wallpaper picker
+  list                List all discovered wallpaper files
+  current             Print path of currently active wallpaper
+  help                Show this help message
+EOF
+}
+
+get_wallpaper_dirs() {
+    local dirs=(
+        "$CONFIG_DIR/wallpapers"
+        "${XDG_DATA_HOME:-$HOME/.local/share}/wallpapers/aetheros"
+        "${XDG_DATA_HOME:-$HOME/.local/share}/wallpapers"
+        "$REPO_DIR/theme/wallpapers"
+        "$HOME/Pictures/Wallpapers"
+        "/usr/share/wallpapers"
+        "/usr/share/backgrounds"
+    )
+    for d in "${dirs[@]}"; do
+        if [ -d "$d" ]; then
+            echo "$d"
+        fi
+    done
+}
+
+is_seen() {
+    local item="$1"
+    for s in "${seen_files[@]}"; do
+        [ "$s" = "$item" ] && return 0
+    done
+    return 1
+}
+
+get_wallpapers() {
+    local seen_files=()
+    while IFS= read -r dir; do
+        while IFS= read -r file; do
+            [ -f "$file" ] || continue
+            # Avoid duplicate basenames
+            local base
+            base="$(basename "$file")"
+            if ! is_seen "$base"; then
+                seen_files+=("$base")
+                echo "$file"
+            fi
+        done < <(find "$dir" -maxdepth 2 -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.webp" -o -iname "*.jxl" \) 2>/dev/null | sort)
+    done < <(get_wallpaper_dirs)
+}
+
+get_current_wallpaper() {
+    if [ -f "$STATE_FILE" ]; then
+        cat "$STATE_FILE"
+    else
+        echo ""
+    fi
+}
+
+apply_wallpaper() {
+    local wp="$1"
+    if [ ! -f "$wp" ]; then
+        echo "ERROR: Wallpaper file not found: $wp" >&2
+        exit 1
+    fi
+
+    local abs_path
+    abs_path="$(readlink -f "$wp")"
+
+    mkdir -p "$CONFIG_DIR"
+    echo "$abs_path" > "$STATE_FILE"
+
+    # 1. Update Quickshell if running
+    if pgrep -f "qs -c $SHELL_NAME" >/dev/null 2>&1; then
+        qs -c "$SHELL_NAME" ipc call wallpaper set "$abs_path" >/dev/null 2>&1 || true
+    fi
+
+    # 2. Update swww if running
+    if command -v swww >/dev/null 2>&1 && pgrep -x swww-daemon >/dev/null 2>&1; then
+        swww img "$abs_path" --transition-type fade --transition-duration 1 2>/dev/null || true
+    fi
+
+    # 3. Update hyprpaper if running
+    if command -v hyprctl >/dev/null 2>&1 && pgrep -x hyprpaper >/dev/null 2>&1; then
+        hyprctl hyprpaper preload "$abs_path" 2>/dev/null || true
+        hyprctl hyprpaper wallpaper ",$abs_path" 2>/dev/null || true
+    fi
+
+    echo "Applied wallpaper: $abs_path"
+}
+
+cmd_random() {
+    mapfile -t list < <(get_wallpapers)
+    if [ ${#list[@]} -eq 0 ]; then
+        echo "No wallpapers found in search paths." >&2
+        exit 1
+    fi
+
+    local current
+    current="$(get_current_wallpaper)"
+    local chosen=""
+
+    if [ ${#list[@]} -eq 1 ]; then
+        chosen="${list[0]}"
+    else
+        # Select a random wallpaper different from current if possible
+        local filtered=()
+        for item in "${list[@]}"; do
+            [ "$item" != "$current" ] && filtered+=("$item")
+        done
+        if [ ${#filtered[@]} -gt 0 ]; then
+            local idx=$((RANDOM % ${#filtered[@]}))
+            chosen="${filtered[$idx]}"
+        else
+            local idx=$((RANDOM % ${#list[@]}))
+            chosen="${list[$idx]}"
+        fi
+    fi
+
+    apply_wallpaper "$chosen"
+}
+
+cmd_next() {
+    mapfile -t list < <(get_wallpapers)
+    if [ ${#list[@]} -eq 0 ]; then
+        echo "No wallpapers found." >&2
+        exit 1
+    fi
+
+    local current
+    current="$(get_current_wallpaper)"
+    local next_idx=0
+
+    for i in "${!list[@]}"; do
+        if [ "${list[$i]}" = "$current" ]; then
+            next_idx=$(((i + 1) % ${#list[@]}))
+            break
+        fi
+    done
+
+    apply_wallpaper "${list[$next_idx]}"
+}
+
+cmd_prev() {
+    mapfile -t list < <(get_wallpapers)
+    if [ ${#list[@]} -eq 0 ]; then
+        echo "No wallpapers found." >&2
+        exit 1
+    fi
+
+    local current
+    current="$(get_current_wallpaper)"
+    local prev_idx=0
+
+    for i in "${!list[@]}"; do
+        if [ "${list[$i]}" = "$current" ]; then
+            prev_idx=$(((i - 1 + ${#list[@]}) % ${#list[@]}))
+            break
+        fi
+    done
+
+    apply_wallpaper "${list[$prev_idx]}"
+}
+
+cmd_select() {
+    if pgrep -f "qs -c $SHELL_NAME" >/dev/null 2>&1; then
+        qs -c "$SHELL_NAME" ipc call wallpaper toggle
+    else
+        echo "aether-shell is not running. Starting wallpaper selector requires a running shell session." >&2
+        exit 1
+    fi
+}
+
+case "${1:-help}" in
+    random) cmd_random ;;
+    next) cmd_next ;;
+    prev) cmd_prev ;;
+    set)
+        if [ -z "${2:-}" ]; then
+            echo "Usage: aether-wallpaper set <path-to-image>" >&2
+            exit 1
+        fi
+        apply_wallpaper "$2"
+        ;;
+    select|picker|toggle) cmd_select ;;
+    list) get_wallpapers ;;
+    current) get_current_wallpaper ;;
+    help|-h|--help) usage ;;
+    *)
+        echo "Unknown command: $1" >&2
+        usage >&2
+        exit 1
+        ;;
+esac

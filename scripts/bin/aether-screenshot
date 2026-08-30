@@ -1,0 +1,64 @@
+#!/usr/bin/bash
+# aether-screenshot — Standalone screenshot capture helper for AetherOS.
+# Captures full screen or selected region using grim and slurp, saves the PNG
+# to ~/Pictures/Screenshots, and copies it to the clipboard via wl-copy.
+
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+aether-screenshot — AetherOS screenshot helper
+
+Usage: aether-screenshot [full|region]
+
+Modes:
+  full       Capture all connected outputs (default)
+  region     Interactively select an area or window to capture with slurp
+EOF
+}
+
+MODE="${1:-full}"
+
+case "$MODE" in
+    full|region) ;;
+    -h|--help|help)
+        usage
+        exit 0
+        ;;
+    *)
+        echo "Unknown mode: $MODE" >&2
+        usage >&2
+        exit 1
+        ;;
+esac
+
+if ! command -v grim >/dev/null 2>&1; then
+    echo "ERROR: grim is required for screenshots but was not found on PATH" >&2
+    exit 1
+fi
+
+SCREENSHOT_DIR="${SCREENSHOT_DIR:-$HOME/Pictures/Screenshots}"
+mkdir -p "$SCREENSHOT_DIR"
+FILE="$SCREENSHOT_DIR/screenshot-$(date +%Y%m%d-%H%M%S).png"
+
+if [ "$MODE" = "region" ]; then
+    if ! command -v slurp >/dev/null 2>&1; then
+        echo "ERROR: slurp is required for region screenshots but was not found on PATH" >&2
+        exit 1
+    fi
+    GEOMETRY="$(slurp)" || exit 1
+    [ -n "$GEOMETRY" ] || exit 1
+    grim -g "$GEOMETRY" "$FILE"
+else
+    grim "$FILE"
+fi
+
+if [ -f "$FILE" ]; then
+    if command -v wl-copy >/dev/null 2>&1; then
+        wl-copy < "$FILE" 2>/dev/null || true
+    fi
+    echo "$FILE"
+else
+    echo "ERROR: Failed to create screenshot file at $FILE" >&2
+    exit 1
+fi
