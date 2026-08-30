@@ -37,7 +37,7 @@ fi
 
 echo
 echo "Backing up current state first..."
-"$REPO_DIR/scripts/backup.sh"
+bash "$REPO_DIR/scripts/backup.sh"
 
 echo
 removed=0

@@ -138,7 +138,7 @@ esac
 
 echo
 echo "--- Symlinking configs ---"
-"$REPO_DIR/scripts/setup-symlinks.sh"
+bash "$REPO_DIR/scripts/setup-symlinks.sh"
 
 echo
 echo "--- Enabling systemd user services ---"
@@ -154,4 +154,4 @@ echo
 echo "=== Bootstrap complete ==="
 echo "Running diagnostics..."
 echo
-"$REPO_DIR/scripts/doctor.sh" || true
+bash "$REPO_DIR/scripts/doctor.sh" || true

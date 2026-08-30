@@ -14,7 +14,7 @@ else
     echo "Not a git checkout, skipping pull."
 fi
 
-"$REPO_DIR/scripts/setup-symlinks.sh"
+bash "$REPO_DIR/scripts/setup-symlinks.sh"
 
 echo
 echo "Reload Hyprland (SUPER+SHIFT+Q to log out and back in, or run 'hyprctl reload')"

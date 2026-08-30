@@ -107,7 +107,7 @@ case "${1:-help}" in
         ;;
     logs) cmd_logs ;;
     doctor) cmd_doctor ;;
-    update) "$(dirname "$(readlink -f "$0")")/../update.sh" ;;
+    update) bash "$(dirname "$(readlink -f "$0")")/../update.sh" ;;
     help|-h|--help) usage ;;
     *)
         echo "Unknown command: $1" >&2
