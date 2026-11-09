@@ -32,10 +32,6 @@ Singleton {
         }
     }
 
-    Process {
-        id: launchProcess
-    }
-
     function refresh() {
         scanProcess.running = true;
     }
@@ -203,6 +199,7 @@ Singleton {
             argv: argv,
             icon: fields.Icon || "",
             categories: (fields.Categories || "").split(";").filter(function(c) { return c.length > 0; }),
+            keywords: (fields.Keywords || "").split(";").filter(function(c) { return c.length > 0; }).join(" ").toLowerCase(),
             terminal: fields.Terminal === "true",
             noDisplay: fields.NoDisplay === "true",
             hidden: fields.Hidden === "true"
@@ -212,12 +209,57 @@ Singleton {
     function launch(app) {
         if (!app || !app.argv || app.argv.length === 0) return;
         Logger.info("ApplicationService", "Launching " + app.name + " (" + app.argv[0] + ")");
-        if (app.terminal) {
-            launchProcess.command = ["kitty", "-e"].concat(app.argv);
-        } else {
-            launchProcess.command = app.argv;
-        }
-        launchProcess.running = true;
+        // execDetached: the app must outlive the shell (restarting the shell
+        // must never kill your browser).
+        Quickshell.execDetached(app.terminal ? ["kitty", "-e"].concat(app.argv) : app.argv);
+        root.recordLaunch(app);
+    }
+
+    // ── Favourites & recents (persisted in config.json) ───────────────
+    function isFavorite(app) {
+        return !!app && (Config.launcher.favorites || []).indexOf(app.id) >= 0;
+    }
+
+    function toggleFavorite(app) {
+        if (!app) return;
+        const favs = (Config.launcher.favorites || []).slice();
+        const i = favs.indexOf(app.id);
+        if (i >= 0) favs.splice(i, 1); else favs.push(app.id);
+        Config.launcher.favorites = favs;
+    }
+
+    function recordLaunch(app) {
+        const limit = Math.max(1, Config.launcher.recentLimit || 8);
+        const rec = (Config.launcher.recents || []).filter(function(id) { return id !== app.id; });
+        rec.unshift(app.id);
+        Config.launcher.recents = rec.slice(0, limit);
+    }
+
+    function _byIds(ids) {
+        const map = {};
+        for (const a of root.applications) map[a.id] = a;
+        return (ids || []).map(function(id) { return map[id]; }).filter(function(a) { return !!a; });
+    }
+
+    function favorites() { return root._byIds(Config.launcher.favorites); }
+    function recents() { return root._byIds(Config.launcher.recents); }
+
+    // Freedesktop main categories, mapped to short labels.
+    readonly property var categoryLabels: ({
+        "AudioVideo": "Media", "Development": "Development", "Education": "Education", "Game": "Games",
+        "Graphics": "Graphics", "Network": "Internet", "Office": "Office", "Science": "Science",
+        "Settings": "Settings", "System": "System", "Utility": "Utilities"
+    })
+
+    // Categories that actually have apps, in a stable order.
+    function categories() {
+        const present = {};
+        for (const a of root.applications) for (const c of a.categories) if (root.categoryLabels[c]) present[c] = true;
+        return Object.keys(root.categoryLabels).filter(function(c) { return present[c]; });
+    }
+
+    function inCategory(cat) {
+        return root.applications.filter(function(a) { return a.categories.indexOf(cat) >= 0; });
     }
 
     function search(query) {
@@ -227,8 +269,17 @@ Singleton {
         const q = query.toLowerCase();
         const scored = [];
         for (const app of root.applications) {
-            const score = root._score(q, app.name.toLowerCase());
-            if (score > 0) scored.push({ app: app, score: score });
+            let score = root._score(q, app.name.toLowerCase());
+            // Secondary fields count, but less than a name match.
+            if (score <= 0 && app.genericName) score = root._score(q, app.genericName.toLowerCase()) * 0.6;
+            if (score <= 0 && app.keywords && app.keywords.indexOf(q) >= 0) score = 60;
+            if (score <= 0 && app.comment && app.comment.toLowerCase().indexOf(q) >= 0) score = 30;
+            if (score > 0) {
+                if (root.isFavorite(app)) score += 25;
+                const r = (Config.launcher.recents || []).indexOf(app.id);
+                if (r >= 0) score += 20 - r;
+                scored.push({ app: app, score: score });
+            }
         }
         scored.sort(function(a, b) { return b.score - a.score; });
         return scored.map(function(s) { return s.app; });

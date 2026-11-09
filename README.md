@@ -1,83 +1,92 @@
-# AetherOS dotfiles
+# AetherOS
 
-A complete Hyprland environment: compositor config, the original AetherOS Shell (Quickshell),
-terminal, shell rc, theming, and install scripts — everything needed to go from a fresh Fedora
-install to a working Hyprland desktop, not just the panel/launcher UI on its own.
+A complete, hardware-aware Hyprland desktop for Fedora: compositor configuration, the original
+AetherOS Shell (Quickshell/QML) — panel, launcher, control centre, system dashboard,
+notifications, settings, lock screen — a hardware/graphics CLI with a Fedora NVIDIA driver
+installer, theming, and safe install/backup/restore tooling.
+
+Works on NVIDIA, AMD and Intel GPUs (including hybrid laptops) and on Intel and AMD CPUs.
+Hardware is **detected**, never assumed.
 
 ```
 aetheros-dotfiles/
-├── install.sh                    # fresh-machine setup: packages, Quickshell build, symlinks
+├── install.sh                     # fresh-machine setup → scripts/bootstrap.sh
 ├── config/
-│   ├── hypr/                     # Hyprland: monitors, workspaces, keybinds, rules, env
-│   ├── quickshell/aether-shell/  # the shell itself — panel, launcher, dashboard, lock screen, etc.
-│   ├── kitty/                    # terminal config, themed to match the shell
-│   └── zsh/                      # shell rc: prompt, aliases, completion
-├── theme/
-│   ├── gtk/                      # GTK app theming (dark mode, fonts, cursor)
-│   └── wallpapers/                # bring your own — see theme/wallpapers/README.md
-├── scripts/
-│   ├── setup-symlinks.sh         # links config/ and theme/ into ~/.config etc.
-│   ├── update.sh                 # git pull + re-symlink
-│   └── bin/aether                # CLI: reload, lock, screenshot, doctor, ...
-├── packages/fedora.txt           # dnf package list
-├── docs/
-│   ├── KEYBINDS.md
-│   └── TROUBLESHOOTING.md
-└── THIRD_PARTY.md
+│   ├── hypr/                      # Hyprland (+ recovery.conf)
+│   ├── quickshell/aether-shell/   # the desktop shell (QML)
+│   ├── kitty/  zsh/
+├── lib/aether/                    # aether CLI backend (Python, stdlib only)
+│   ├── hw/                        #   system · cpu · gpu detection
+│   ├── graphics/                  #   Mesa/Vulkan/VA-API · NVIDIA · reports · Hyprland GPU config
+│   └── telemetry · performance · theme · cli
+├── scripts/                       # bootstrap · setup-symlinks · backup · restore · update · doctor
+│   └── bin/aether                 # the CLI entry point
+├── system/systemd/                # aether-shell / aether-clipboard user services
+├── packages/fedora/               # packages.txt (required) · optional.txt
+├── theme/                         # GTK theme, wallpapers
+├── docs/                          # guides (below)
+└── tests/                         # shellcheck, qmllint, config, Python unit, integration
 ```
 
-## Install (Fedora)
+## Install
 
 ```sh
-git clone <this-repo> ~/aetheros-dotfiles
-cd ~/aetheros-dotfiles
+git clone <this-repo> ~/aetheros-dotfiles && cd ~/aetheros-dotfiles
 ./install.sh
 ```
 
-This installs packages from `packages/fedora.txt`, builds Quickshell from source (no official
-Fedora package exists yet), and symlinks every config into place. **Nothing is deleted** —
-existing configs at the target paths get backed up with a timestamp suffix, not overwritten.
-Log out and pick Hyprland at your display manager (or start it from a TTY) when it's done.
+Asks before installing anything, backs up existing configs, never deletes them. Full details,
+dependencies and recovery: **[INSTALLATION.md](INSTALLATION.md)**.
 
-Already on Hyprland and just want the configs, no package install?
+## The desktop
+
+| Surface | Open with | What it does |
+|---|---|---|
+| **Panel** | always | launcher button, workspaces, window title, centred clock, CPU/RAM/GPU usage + temperatures, network speed, tray, media, Bluetooth, network, volume, microphone, battery, notifications, control centre. Styles: *floating* island (default), *full* width, centred *dock*; top or bottom; adjustable height |
+| **Launcher** | `SUPER+D` | fuzzy search over names/keywords/descriptions, favourites, recent apps, categories, keyboard-driven |
+| **Control centre** | `SUPER+A` | Wi-Fi (network list, passwords), Bluetooth, DND, night light, dark mode, microphone, battery saver, performance mode, volume / mic / brightness sliders, output & input device selection, media, displays, wallpaper, power |
+| **Dashboard** | `SUPER+N` | CPU/RAM/GPU/network graphs, CPU & GPU temperatures, VRAM, disk, per-thread load, top processes, uptime, hardware, calendar |
+| **Notifications** | `SUPER+,` | grouped history, per-item/per-app clear, Do Not Disturb, animated toasts with actions |
+| **Settings** | `SUPER+I` | theme (dark/light/auto), accent (presets, hex, or from wallpaper), transparency, blur, animation speed, reduced motion, bar, notifications, wallpaper, performance |
+
+Design: glass surfaces (compositor blur + tint + hairline sheen), one token-based design system
+for dark and light themes, consistent motion with speed control and reduced-motion support,
+original vector icon set. Metrics the hardware can't provide are shown as *Unavailable* with the
+reason — never as invented numbers.
+
+## The `aether` CLI
+
 ```sh
-./scripts/setup-symlinks.sh
+aether system | hardware | cpu [--watch] | gpu [--watch]
+aether gpu run <command>                  # run on the discrete GPU (hybrid laptops)
+aether graphics detect | drivers | verify | install-nvidia | configure
+aether performance [set <power-profile> | hyprland <quality|balanced|low-latency|battery>]
+aether diagnostics | repair | hyprland [compat] | update
+aether theme accent <image> | mode <dark|light|auto>
 ```
 
-Clipboard history capture runs as a systemd `--user` service
-(`system/systemd/aether-clipboard.service`), not a bare Hyprland `exec-once` — it restarts
-automatically if it crashes. `bootstrap.sh` enables it; if you only ran `setup-symlinks.sh`,
-enable it yourself:
-```sh
-systemctl --user enable --now aether-clipboard.service
-```
+Every command reads the live system, supports `--json`, needs no root (privileged steps run as
+`sudo <shown command>` after confirmation) and logs to `~/.local/state/aether/aether.log`.
 
-## What's here vs. what's the shell
+## Guides
 
-This repo has two layers:
-
-1. **The dotfiles layer** (this level) — Hyprland config, terminal, shell rc, theming, install
-   scripts. Everything in this README.
-2. **The shell** (`config/quickshell/aether-shell/`) — the actual desktop UI: panel, launcher,
-   notifications, dashboard, lock screen, power menu, clipboard history, screenshots. It has its
-   own README, ARCHITECTURE.md, and PROGRESS.md — that's the bigger, actively-developed piece and
-   its docs track feature status in detail.
+- [INSTALLATION.md](INSTALLATION.md) — install, dependencies, update, backup/rollback, recovery
+- [docs/DRIVER_GUIDE.md](docs/DRIVER_GUIDE.md) — GPU detection, AMD, Intel, hybrid, CPU
+- [docs/NVIDIA_GUIDE.md](docs/NVIDIA_GUIDE.md) — driver branches, RPM Fusion, akmods, Secure Boot, rollback
+- [docs/HYPRLAND_GUIDE.md](docs/HYPRLAND_GUIDE.md) — config layout, version compatibility, profiles, multi-monitor
+- [docs/KEYBINDS.md](docs/KEYBINDS.md) · [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+- [ARCHITECTURE.md](ARCHITECTURE.md) · [CHANGELOG.md](CHANGELOG.md) · [TEST_REPORT.md](TEST_REPORT.md)
+- Shell internals: [config/quickshell/aether-shell/ARCHITECTURE.md](config/quickshell/aether-shell/ARCHITECTURE.md)
 
 ## Status
 
-The dotfiles layer (Hyprland config, kitty, zsh, install/symlink scripts, package list) is
-complete for a working single-machine setup, and now includes an original AetherOS GTK
-stylesheet (`theme/gtk/*/gtk.css`, not visually verified — see PROGRESS.md). What it doesn't
-include yet: a wallpaper engine (bring your own image +
-hyprpaper for now), and distro-installer-level tooling (Plymouth/GRUB branding, ISO build) — those
-belong to the broader AetherOS distribution project, not this dotfiles repo.
-
-For the shell's own feature-by-feature status (what's built, what's flagged as unverified, what's
-not started), see `config/quickshell/aether-shell/PROGRESS.md` — it's the more detailed of the two
-and shouldn't be treated as fully covered by this summary.
+What has and hasn't been verified is tracked honestly in [PROGRESS.md](PROGRESS.md) and
+[TEST_REPORT.md](TEST_REPORT.md). In short: scripts, configs and the Python backend are tested
+(shellcheck, Qt qmllint, ~85 unit tests against fixture hardware). The QML shell passes
+syntax/structure/schema checks but has not been run in a live Quickshell session as part of
+this upgrade, and no physical-GPU testing was performed.
 
 ## License
 
-Copyright (C) 2026 Charan Balaji. All rights reserved.
-
-Licensed under GPL-3.0-or-later — see [LICENSE](./LICENSE). Third-party attributions in [THIRD_PARTY.md](./THIRD_PARTY.md).
+Copyright (C) 2026 Charan Balaji. GPL-3.0-or-later — see [LICENSE](./LICENSE). Third-party
+attributions in [THIRD_PARTY.md](./THIRD_PARTY.md).

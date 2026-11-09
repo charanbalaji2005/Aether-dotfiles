@@ -66,7 +66,7 @@ get_wallpapers() {
                 seen_files+=("$base")
                 echo "$file"
             fi
-        done < <(find "$dir" -maxdepth 2 -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.webp" -o -iname "*.jxl" \) 2>/dev/null | sort)
+        done < <(find "$dir" -maxdepth 2 -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.webp" -o -iname "*.jxl" -o -iname "*.gif" \) 2>/dev/null | sort)
     done < <(get_wallpaper_dirs)
 }
 

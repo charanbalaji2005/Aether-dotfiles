@@ -3,7 +3,99 @@
 Dates reflect when each phase was built, not calendar releases — this hasn't been tagged/released
 yet (see top-level `PROGRESS.md` for current status before treating anything below as "shipped").
 
-## Unreleased
+## 0.2.0 — Hardware-aware desktop upgrade (2026-11-09)
+
+### Added — AetherOS CLI backend (`lib/aether/`, Python 3.9+, standard library only)
+- `aether system | hardware | cpu | gpu`: OS/kernel/session/Secure Boot; CPU vendor, model,
+  cores/threads, frequency, governor, scaling driver, EPP, boost, temperature (coretemp/k10temp/
+  zenpower), VT-x/AMD-V + KVM; GPUs from PCI sysfs (vendor, model via lspci/pci.ids, PCI IDs,
+  kernel driver, DRM nodes, boot GPU, runtime-PM state, integrated/discrete/virtual); storage;
+  battery health. `--watch` live views, `--json` everywhere.
+- `aether graphics detect | drivers | verify`: Mesa version, OpenGL renderer (eglinfo/glxinfo,
+  flags llvmpipe), Vulkan ICDs/devices, VA-API decode/encode per render node, NVIDIA module/
+  version/build-for-kernel/signer, akmods failure logs, akmods key enrolment, nvidia_drm modeset/
+  fbdev, GBM backend, explicit-sync capability, suspend services, persistence daemon, CUDA,
+  nouveau conflicts; per-vendor codec recommendations (RPM Fusion freeworld / intel-media-driver
+  / libva-nvidia-driver). PASS/WARN/FAIL with fixes.
+- `aether graphics install-nvidia`: driver branch chosen from the chip code name (Turing+ →
+  akmod-nvidia; Maxwell/Pascal/Volta → 580xx when available, else a warning; Kepler/Fermi/
+  unknown → refused). Checks Fedora, existing driver, stale kernel, RPM Fusion; Secure Boot key
+  generation + MOK enrolment steps (never disables Secure Boot); prints the plan, needs typed
+  confirmation, records every command + package diff, prints rollback commands. `--dry-run`.
+- `aether graphics configure`: writes `~/.config/aether-shell/hypr/hardware.conf` with only the
+  environment the hardware needs; never forces NVIDIA on hybrid laptops; explicit compositor GPU
+  choice via `--primary` (AQ_DRM_DEVICES with by-path symlinks). Diff + backup + confirm.
+- `aether gpu run <cmd>`: PRIME offload to the discrete GPU (NVIDIA or Mesa `DRI_PRIME`).
+- `aether performance`: power profiles via powerprofilesctl; Hyprland profiles quality /
+  balanced / low-latency / battery written to `profile.conf`.
+- `aether hyprland [verify|compat]`: `Hyprland --verify-config` + `hyprctl configerrors`;
+  version-specific syntax (touchpad gestures changed in 0.51) generated for the installed version.
+- `aether diagnostics` (saved report), `aether repair` (missing fragments, invalid config.json,
+  broken links, exec bits, disabled units — with `--dry-run`), `aether theme accent|mode`.
+- `aether telemetry --stream`: one long-lived JSON-lines process for the shell. Never wakes a
+  runtime-suspended dGPU; one `nvidia-smi -lms` child on NVIDIA desktops; `null` + reason for
+  unavailable metrics; optional process table.
+- Logging to `~/.local/state/aether/aether.log`.
+
+### Added — Shell
+- Design system: dark + light palettes (dark/light/auto by time), accent presets + hex input +
+  accent from wallpaper, configurable panel transparency, motion speed multiplier on top of
+  reduced motion, new tokens (surface, onAccent, scrim…), ~45 new original icons.
+- Components: PopupPanel (shared animated popup: open/close transitions, click-outside, Esc,
+  opens on the focused monitor, closes other popups), GlassPanel sheen/gradient, IconButton,
+  ToggleTile, StatTile, Sparkline graphs, SegmentedControl, SettingRow, SectionLabel, Spinner.
+- Panel: floating / full / dock styles, launcher button, centred clock, CPU/RAM/GPU chips with
+  temperatures, network speed, microphone, notification bell with unread badge + DND, control
+  centre button; animated workspace pills with hover numbers and scroll switching.
+- Control centre (`SUPER+A`): Wi-Fi (radio, scan, connect with password, disconnect, forget),
+  Bluetooth, DND, night light (hyprsunset), dark mode, microphone, battery saver + performance
+  (powerprofilesctl), volume/mic/brightness sliders, output/input device selection (wpctl),
+  media mini-player, displays (scale, nwg-displays), wallpaper, lock/power/settings.
+- Dashboard rewritten as a system monitor: CPU/RAM/GPU/network history graphs, temperatures,
+  VRAM, disk, per-thread load, top processes (sampled only while open), uptime, hardware, calendar.
+- Launcher: favourites, recents, categories, keyword/description search, open/close animation,
+  PgUp/PgDn/Home/End/Tab/Ctrl+F; apps launched detached.
+- Notifications: grouped history, per-item/per-app clear, unread count, persisted DND (critical
+  still shows), configurable timeouts and max visible, animated toasts with icons/images.
+- OSD for volume, microphone and brightness. Settings expanded to six sections.
+- Wallpapers: per-display, blur (rendered once), GIF playback gated on AC/reduced motion,
+  decoded at screen size.
+
+### Added — Hyprland / install
+- Generated per-machine fragments (hardware/compat/profile) sourced from `hyprland.conf`;
+  `recovery.conf` minimal session; refined animation curves, shadows, blur, smart gaps, vfr;
+  explicit layer namespaces for blur rules; new binds (control centre, region screenshot,
+  scratchpad, resize, multi-monitor, ALT+Tab).
+- `bootstrap.sh`: confirms package installs, optional package list with skip-unavailable,
+  backup before linking, hardware detection, fragment generation, NVIDIA plan offer, validation.
+- `update.sh` validates after pulling; `backup.sh` includes config.json and fragments.
+- Docs: INSTALLATION, DRIVER_GUIDE, NVIDIA_GUIDE, HYPRLAND_GUIDE, TEST_REPORT; README,
+  ARCHITECTURE, TROUBLESHOOTING, KEYBINDS, SECURITY updated.
+- Tests: Python unit suite (fixture sysfs for NVIDIA desktop, AMD, Intel laptop, hybrid, no
+  driver, Secure Boot, Kepler/unknown GPUs, no telemetry), Qt qmllint suite, config/schema/IPC
+  suite; extended Hyprland invariants; CI jobs for all of them.
+
+### Fixed (pre-existing bugs found during the upgrade)
+- **Shell failed to load**: `WallpaperBackground.qml` used `WlLayer.layer` without importing
+  `Quickshell.Wayland` (and `WlLayer` isn't the type name) — an error there stops `shell.qml`.
+- **Command injection**: wallpaper path was interpolated into a `bash -c` string.
+- `Colors.surface` / `Colors.surfaceHover` were used by Settings and the wallpaper picker but
+  never defined.
+- Shell notifications (`EventBus.notificationRequested`: screenshot saved, wallpaper applied)
+  had no listener and were never shown.
+- `aether-shell.service` hard-coded `/usr/bin/qs` (source builds install to `/usr/local`) and
+  lacked `~/.local/bin` on PATH, so `aether-screenshot` couldn't be found under systemd.
+- `Slider` and `Switch` overwrote their own bound `value`/`checked`, silently breaking bindings
+  (e.g. the volume slider stopped following media-key changes after one drag).
+- Apps were launched as children of the shell through one shared `Process` (restarting the
+  shell killed them; a second launch could be ignored) — now `execDetached`.
+- Network polling ran `nmcli device wifi list` every 5 s, which triggers periodic Wi-Fi rescans;
+  now `--rescan no`, scanning only on demand.
+- Active-window title re-queried `hyprctl` on every Hyprland event; now only on focus/title events.
+- `aether shell-reload` killed *every* `qs` process and logged to a predictable `/tmp` path.
+- Repo hygiene scan matched binary wallpaper files (it was failing on the original repo).
+
+## Unreleased (before 0.2.0)
 
 ### Added — Wallpaper Engine & Management
 - `config/quickshell/aether-shell/services/WallpaperService.qml`: wallpaper discovery singleton across standard XDG and AetherOS wallpaper directories with title humanization, state synchronization, random selection, and sequential cycling.

@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 import Quickshell.Bluetooth
 import "../../theme"
 import "../../core"
@@ -24,7 +25,10 @@ Scope {
         id: window
         visible: false
         focusable: true
-        screen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
+        screen: ShellState.activeScreen ? ShellState.activeScreen : (Quickshell.screens.length > 0 ? Quickshell.screens[0] : null)
+        WlrLayershell.namespace: "aether-bluetooth"
+        WlrLayershell.layer: WlrLayer.Top
+        exclusionMode: ExclusionMode.Ignore
         anchors { top: true; bottom: true; left: true; right: true }
         color: "transparent"
 
@@ -229,6 +233,11 @@ Scope {
         }
     }
 
+    Connections {
+        target: EventBus
+        function onClosePopups(except) { if (except !== "aether-bluetooth" && window.visible) window.visible = false; }
+    }
+
     IpcHandler {
         target: "bluetooth"
         function toggle(): void { window.toggleVisible(); }
@@ -238,6 +247,6 @@ Scope {
 
     Connections {
         target: EventBus
-        function onBluetoothManagerRequested() { window.visible = true; }
+        function onBluetoothManagerRequested() { EventBus.closePopups("aether-bluetooth"); window.visible = true; }
     }
 }

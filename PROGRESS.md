@@ -48,6 +48,23 @@ For the shell's own feature-by-feature status, see
 | `packaging/rpm/*` CI job (`release.yml`) | IMPLEMENTED | The workflow YAML is valid and its steps mirror the exact command sequence that was manually verified to work (see the RPM row above) — but the workflow itself hasn't executed on a GitHub runner. |
 | CONTRIBUTING.md / CHANGELOG.md / SECURITY.md / CODE_OF_CONDUCT.md / ARCHITECTURE.md | IMPLEMENTED | Documentation — "tested" doesn't apply in the executable sense; accuracy was checked against what's actually in the repo at time of writing. |
 
+## 0.2.0 upgrade (hardware-aware desktop)
+
+Built on Windows 11 with Git Bash and Python 3.15 — no Linux, Wayland, Hyprland, Quickshell or
+GPU driver stack. Real tools used for verification: shellcheck 0.11, Qt's qmllint (PySide6),
+CPython unittest. See [TEST_REPORT.md](TEST_REPORT.md) for the exact runs.
+
+| Component | Status | Basis |
+|---|---|---|
+| `lib/aether/` CLI backend (hw, graphics, telemetry, performance, theme, cli) | **TESTED** | ~85 unit/CLI tests against fixture sysfs/procfs trees modelled on real Fedora machines (NVIDIA desktop, AMD desktop, Intel laptop, hybrid laptop, NVIDIA without driver + Secure Boot, Kepler, unknown GPU, empty system). CLI also run end-to-end against the real (non-Linux) host to prove graceful degradation. **Not VERIFIED**: never run on physical Linux GPUs. |
+| `aether graphics install-nvidia` | **TESTED (plan only)** | Plan generation, branch selection, blockers, Secure Boot steps, `--dry-run`, refusal without confirmation are tested. The execution path (`sudo dnf …`) has not been run on a real Fedora machine. |
+| Generated Hyprland fragments (`hardware.conf`, `compat.conf`, `profile.conf`) | **TESTED** (generation) / IMPLEMENTED (in Hyprland) | Content tested per hardware scenario and Hyprland version; not parsed by a real Hyprland here. `aether hyprland` runs `Hyprland --verify-config` on the target system. |
+| `config/hypr/*` incl. `recovery.conf` | IMPLEMENTED | Static suite passes (braces, source order, fragments created by setup, no obsolete NVIDIA hacks, namespaces exist). Option names checked against Hyprland's documented options as of 0.45–0.5x; not parsed by Hyprland here. |
+| Shell QML (bar, control centre, dashboard, launcher, notifications, settings, OSD, wallpaper, components, services) | IMPLEMENTED | qmllint: 0 syntax errors in all files (before the review fixes — re-run pending, see TEST_REPORT.md); structure/import suite; every `Config.x.y` key declared; every IPC target exists; independent code review pass. **Not run in a live Quickshell session.** |
+| `scripts/bootstrap.sh`, `update.sh`, `doctor.sh` changes | IMPLEMENTED | shellcheck clean; not executed on Fedora here. |
+| `scripts/setup-symlinks.sh` (fragment creation), `backup.sh` targets | IMPLEMENTED here | shellcheck clean. The integration test could not run on this Windows host (symlink creation needs Developer Mode); it runs in CI on Linux. |
+| `system/systemd/aether-shell.service` | IMPLEMENTED | Structural checks; `systemd-analyze` unavailable here. |
+
 ## What actually got found and fixed by testing (not just written and assumed correct)
 
 These are listed because they're the concrete evidence for the TESTED claims above — real bugs
@@ -79,8 +96,8 @@ that static review alone did not catch:
 
 ## Explicitly not started
 
-Wallpaper engine beyond a
-hyprpaper pointer, man pages for the CLI tools, an Arch build actually run through `makepkg`,
-GPG-signing release artifacts, and anything on the shell's own not-started list (Overview,
-Settings app, widget framework, accessibility pass, Bluetooth pairing UI — see the shell's
+Man pages for the CLI tools, an Arch build actually run through `makepkg`, GPG-signing release
+artifacts, a live-session QML test harness, physical-hardware validation of the graphics tooling,
+and anything on the shell's own not-started list (Overview, widget framework, full
+accessibility pass, tray context menus, persisted notification history — see the shell's
 PROGRESS.md).

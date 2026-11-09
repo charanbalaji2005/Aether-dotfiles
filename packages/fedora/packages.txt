@@ -26,6 +26,13 @@ wireplumber
 upower
 brightnessctl
 
+# AetherOS CLI backend (hardware detection, telemetry, graphics tools).
+# Standard library only — no pip packages.
+python3
+pciutils
+hwdata
+mokutil
+
 # Network
 NetworkManager
 

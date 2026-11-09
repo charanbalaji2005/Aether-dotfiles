@@ -1,11 +1,16 @@
 pragma Singleton
+import QtQuick
 import Quickshell
 import Quickshell.Io
 import "../core"
 
-// Quickshell ships no dedicated NetworkManager QML module (unlike Hyprland,
-// Pipewire, or UPower), so this talks to `nmcli` — NetworkManager's own
-// stable, documented CLI — rather than hand-rolling D-Bus calls.
+// NetworkManager via `nmcli` (Quickshell has no NetworkManager module).
+// Every nmcli call is an argv array — SSIDs and passwords are never
+// interpolated into a shell string.
+//
+// Polling: device status every 5 s (cheap). The Wi-Fi list is read with
+// `--rescan no` so polling never triggers radio scans; a real scan happens
+// only when the user opens the Wi-Fi list or presses refresh.
 Singleton {
     id: root
 
@@ -14,20 +19,73 @@ Singleton {
     property string connectionType: "none" // "wifi" | "ethernet" | "none"
     property string ssid: ""
     property int signalStrength: 0
+    readonly property int signalLevel: signalStrength >= 70 ? 3 : signalStrength >= 45 ? 2 : signalStrength > 0 ? 1 : 0
 
+    property bool wifiEnabled: false
+    property bool wifiHardwareAvailable: false
+    property var networks: []          // [{ ssid, signal, security, active, known }]
+    property var knownConnections: []  // saved Wi-Fi connection names
+    property bool scanning: false
+    property string busySsid: ""
+    property string lastError: ""
+    property string wifiDevice: ""     // e.g. wlp2s0, from device status
+
+    // ── Status ──────────────────────────────────────────────────────────
     Process {
         id: statusProcess
-        command: ["nmcli", "-t", "-f", "TYPE,STATE,CONNECTION", "device", "status"]
+        command: ["nmcli", "-t", "-f", "TYPE,STATE,CONNECTION,DEVICE", "device", "status"]
+        stdout: StdioCollector { onStreamFinished: root._parseStatus(this.text) }
+        onExited: function(code) { if (code !== 0) root.available = false; }
+    }
+
+    Process {
+        id: radioProcess
+        command: ["nmcli", "-t", "-f", "WIFI-HW,WIFI", "radio"]
         stdout: StdioCollector {
-            onStreamFinished: root._parseStatus(this.text)
+            onStreamFinished: {
+                const p = this.text.trim().split(":");
+                root.wifiHardwareAvailable = p[0] === "enabled";
+                root.wifiEnabled = p[1] === "enabled";
+            }
         }
     }
 
     Process {
         id: wifiProcess
-        command: ["nmcli", "-t", "-f", "ACTIVE,SIGNAL,SSID", "device", "wifi", "list"]
+        property bool rescan: false
+        command: ["nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "device", "wifi", "list", "--rescan", rescan ? "yes" : "no"]
+        stdout: StdioCollector { onStreamFinished: root._parseWifi(this.text) }
+        onExited: { root.scanning = false; rescan = false; }
+    }
+
+    Process {
+        id: knownProcess
+        command: ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"]
         stdout: StdioCollector {
-            onStreamFinished: root._parseWifi(this.text)
+            onStreamFinished: {
+                const names = [];
+                for (const line of this.text.split("\n")) {
+                    const parts = root._splitTerse(line);
+                    if (parts.length >= 2 && parts[1] === "802-11-wireless") names.push(parts[0]);
+                }
+                root.knownConnections = names;
+            }
+        }
+    }
+
+    Process {
+        id: actionProcess
+        stderr: StdioCollector {
+            onStreamFinished: {
+                const msg = this.text.trim();
+                if (msg.length > 0) root.lastError = msg.replace(/^Error:\s*/, "");
+            }
+        }
+        onExited: function(code) {
+            if (code === 0) root.lastError = "";
+            root.busySsid = "";
+            root.refresh();
+            root.refreshNetworks(false);
         }
     }
 
@@ -41,44 +99,117 @@ Singleton {
 
     function refresh() {
         statusProcess.running = true;
+        radioProcess.running = true;
+        if (!wifiProcess.running) wifiProcess.running = true;
+    }
+
+    // Called when the Wi-Fi list is shown; rescan=true triggers a real scan.
+    function refreshNetworks(rescan) {
+        if (wifiProcess.running) return;
+        wifiProcess.rescan = rescan === true;
+        root.scanning = rescan === true;
         wifiProcess.running = true;
+        knownProcess.running = true;
+    }
+
+    function setWifiEnabled(on) {
+        root._run(["nmcli", "radio", "wifi", on ? "on" : "off"]);
+        root.wifiEnabled = on; // optimistic; corrected by the next poll
+    }
+
+    function connectTo(ssid, password) {
+        if (!ssid) return;
+        root.busySsid = ssid;
+        root.lastError = "";
+        if (password && password.length > 0) {
+            // NOTE: nmcli takes the passphrase as an argument; it is visible
+            // in the process list for the second or two nmcli runs. See
+            // SECURITY.md ("Wi-Fi passwords") for the trade-off.
+            root._run(["nmcli", "device", "wifi", "connect", ssid, "password", password]);
+        } else {
+            // Open networks, and saved ones: NetworkManager reuses an existing
+            // profile for this SSID (whatever the profile is named), so no
+            // secret is needed on the command line.
+            root._run(["nmcli", "device", "wifi", "connect", ssid]);
+        }
+    }
+
+    function disconnect() {
+        // By device: profile names don't always equal the SSID.
+        if (root.wifiDevice.length > 0) root._run(["nmcli", "device", "disconnect", root.wifiDevice]);
+    }
+
+    function forget(ssid) {
+        root._run(["nmcli", "connection", "delete", "id", ssid]);
+    }
+
+    function _run(argv) {
+        if (actionProcess.running) {
+            Logger.warn("NetworkService", "nmcli busy, ignored: " + argv.join(" "));
+            return;
+        }
+        actionProcess.command = argv;
+        actionProcess.running = true;
+    }
+
+    // nmcli -t escapes ':' inside values as '\:'.
+    function _splitTerse(line) {
+        const out = [];
+        let cur = "";
+        for (let i = 0; i < line.length; i++) {
+            const c = line.charAt(i);
+            if (c === "\\" && i + 1 < line.length) { cur += line.charAt(i + 1); i++; }
+            else if (c === ":") { out.push(cur); cur = ""; }
+            else cur += c;
+        }
+        out.push(cur);
+        return out;
     }
 
     function _parseStatus(text) {
         root.available = true;
-
-        const lines = text.trim().split("\n").filter(function(l) { return l.length > 0; });
         let bestType = "none";
+        let wifiDev = "";
         let connectedFound = false;
-
-        for (const line of lines) {
-            const parts = line.split(":");
-            const type = parts[0];
-            const state = parts[1];
-            if (state === "connected") {
+        for (const line of text.trim().split("\n")) {
+            if (line.length === 0) continue;
+            const parts = root._splitTerse(line);
+            if (parts[0] === "wifi" && wifiDev.length === 0) wifiDev = parts[3] || "";
+            if (parts[1] === "connected") {
                 connectedFound = true;
-                if (type === "ethernet") { bestType = "ethernet"; break; }
-                if (type === "wifi") bestType = "wifi";
+                if (parts[0] === "ethernet") { bestType = "ethernet"; break; }
+                if (parts[0] === "wifi") bestType = "wifi";
             }
         }
-
+        root.wifiDevice = wifiDev;
         root.connected = connectedFound;
         root.connectionType = connectedFound ? bestType : "none";
         EventBus.networkChanged(root.connected, root.connectionType, root.signalStrength);
     }
 
     function _parseWifi(text) {
-        const lines = text.trim().split("\n").filter(function(l) { return l.length > 0; });
-        for (const line of lines) {
-            const parts = line.split(":");
-            if (parts[0] === "yes") {
-                root.signalStrength = parseInt(parts[1]) || 0;
-                root.ssid = parts.slice(2).join(":");
-                return;
-            }
+        const bySsid = {};
+        let active = null;
+        for (const line of text.split("\n")) {
+            if (line.length === 0) continue;
+            const p = root._splitTerse(line);
+            const name = p[1] || "";
+            if (name.length === 0) continue; // hidden networks
+            const entry = {
+                ssid: name,
+                signal: parseInt(p[2]) || 0,
+                security: p[3] || "",
+                active: p[0] === "*",
+                known: root.knownConnections.indexOf(name) >= 0
+            };
+            if (entry.active) active = entry;
+            if (!bySsid[name] || bySsid[name].signal < entry.signal || entry.active) bySsid[name] = entry;
         }
-        root.ssid = "";
-        root.signalStrength = 0;
+        const list = Object.keys(bySsid).map(function(k) { return bySsid[k]; });
+        list.sort(function(a, b) { return (b.active - a.active) || (b.known - a.known) || (b.signal - a.signal); });
+        root.networks = list;
+        root.ssid = active ? active.ssid : "";
+        root.signalStrength = active ? active.signal : 0;
     }
 
     Component.onCompleted: refresh()

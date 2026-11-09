@@ -68,6 +68,23 @@ if [ -f "$REPO_DIR/scripts/bin/aether-wallpaper" ]; then
     chmod +x "$REPO_DIR/scripts/bin/aether-wallpaper"
 fi
 
+# Per-machine Hyprland fragments. hyprland.conf sources these, so they must
+# exist before Hyprland first starts. They are created empty (comments
+# only) and NEVER overwritten here — `aether graphics configure`,
+# `aether hyprland compat` and `aether performance hyprland` fill them in.
+FRAG_DIR="$HOME/.config/aether-shell/hypr"
+ensure_fragment() {
+    local path="$1" how="$2"
+    if [ ! -e "$path" ]; then
+        mkdir -p "$(dirname "$path")"
+        printf '# Placeholder created by AetherOS. Generate real settings with: aether %s\n' "$how" > "$path"
+        echo "Created $path"
+    fi
+}
+ensure_fragment "$FRAG_DIR/hardware.conf" "graphics configure"
+ensure_fragment "$FRAG_DIR/compat.conf" "hyprland compat"
+ensure_fragment "$FRAG_DIR/profile.conf" "performance hyprland <profile>"
+
 echo
 echo "Done. Backups (if any) are alongside the original paths with a $BACKUP_SUFFIX suffix."
 echo "Make sure \$HOME/.local/bin is on your PATH (config/zsh/.zshrc already adds it)."

@@ -4,9 +4,10 @@ import "../../core"
 import "../../services"
 import "../../components"
 
+// Now playing (MPRIS). Click: play/pause. Scroll: next/previous track.
 Capsule {
     id: root
-    visible: MediaService.available && Config.bar.showMedia
+    visible: MediaService.available && Config.bar.showMedia && Config.bar.style !== "dock"
     implicitWidth: Math.min(row.implicitWidth + Metrics.spaceMd * 2, 240)
     onClicked: MediaService.playPause()
 
@@ -24,16 +25,16 @@ Capsule {
         anchors.centerIn: parent
         spacing: Metrics.spaceXs
 
-        Text {
+        AetherIcon {
             anchors.verticalCenter: parent.verticalCenter
-            text: MediaService.playing ? "\u25B8" : "\u23F8"
+            width: 12; height: 12
+            name: MediaService.playing ? "pause" : "play"
             color: Colors.accent
-            font.pixelSize: Typography.sizeSm
         }
 
         Text {
             anchors.verticalCenter: parent.verticalCenter
-            text: MediaService.artist.length > 0 ? (MediaService.artist + " \u2013 " + MediaService.title) : MediaService.title
+            text: MediaService.artist.length > 0 ? (MediaService.artist + " – " + MediaService.title) : MediaService.title
             color: Colors.textSecondary
             font.family: Typography.family
             font.pixelSize: Typography.sizeSm

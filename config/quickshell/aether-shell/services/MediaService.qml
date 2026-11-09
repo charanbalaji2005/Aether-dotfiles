@@ -8,7 +8,9 @@ Singleton {
 
     // First connected MPRIS player. Multi-player switching is a future
     // refinement (see PROGRESS.md) — most desktops only run one at a time.
-    readonly property var primaryPlayer: Mpris.players.count > 0 ? Mpris.players.get(0) : null
+    // Mpris.players is an ObjectModel; its array view is `.values`.
+    readonly property var _players: Mpris.players && Mpris.players.values ? Mpris.players.values : []
+    readonly property var primaryPlayer: _players.length > 0 ? _players[0] : null
     readonly property bool available: primaryPlayer !== null
     readonly property bool playing: available && primaryPlayer.playbackState === MprisPlaybackState.Playing
     readonly property string title: available ? primaryPlayer.trackTitle : ""

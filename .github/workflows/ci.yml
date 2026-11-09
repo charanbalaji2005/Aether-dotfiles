@@ -25,7 +25,7 @@ jobs:
       - name: Syntax-check every entry-point script
         run: |
           set -e
-          for f in install.sh scripts/*.sh scripts/bin/aether; do
+          for f in install.sh scripts/*.sh scripts/bin/*; do
             echo "bash -n $f"
             bash -n "$f"
           done
@@ -35,7 +35,7 @@ jobs:
           for f in README.md LICENSE THIRD_PARTY.md ARCHITECTURE.md \
                    config/hypr/hyprland.conf config/quickshell/aether-shell/shell.qml \
                    config/kitty/kitty.conf config/zsh/.zshrc \
-                   packages/fedora/packages.txt packages/arch/packages.txt; do
+                   packages/fedora/packages.txt packages/arch/packages.txt                    lib/aether/cli.py config/hypr/recovery.conf docs/NVIDIA_GUIDE.md; do
             if [ ! -s "$f" ]; then
               echo "MISSING or EMPTY: $f"
               exit 1

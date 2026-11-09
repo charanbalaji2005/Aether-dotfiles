@@ -130,6 +130,34 @@ another already-unlocked session available the first time.
 | Notification history persisted across shell restarts | NOT STARTED — history is in-memory only, resets when the shell restarts |
 | Bluetooth device battery display | DONE where `batteryAvailable`/`battery` are populated by Quickshell (confirmed properties) |
 
+## Phase 8 — Hardware-aware desktop (0.2.0)
+
+Status note: everything below passes qmllint (syntax), the structure/import suite, the config
+schema and IPC-target checks, and an independent code review — but was **not run in a live
+Quickshell session** as part of this phase. Treat as DONE-pending-live-test.
+
+| Item | Status |
+|---|---|
+| Light theme + auto (by hour), GTK colour-scheme sync | DONE |
+| Accent: presets, hex input, from wallpaper (`aether theme accent`) | DONE |
+| Motion speed multiplier (on top of reduced motion) | DONE |
+| PopupPanel: shared open/close animation, click-outside, Esc, focused monitor | DONE |
+| Bar styles floating/full/dock, top/bottom, height | DONE |
+| Bar: CPU/RAM/GPU + temps, net speed, mic, notification bell, launcher, control centre | DONE |
+| Control centre: Wi-Fi list/connect/forget, BT, DND, night light, dark mode, mic, battery saver, performance, sliders, device selection, media, displays | DONE |
+| Dashboard: graphs, temps, VRAM, disk, per-thread, processes, hardware, calendar | DONE |
+| Telemetry via `aether telemetry --stream` with /proc fallback | DONE |
+| Launcher: favourites, recents, categories, keyword search, animations | DONE |
+| Notifications: grouping, per-item/app clear, unread badge, persisted DND, timeouts | DONE |
+| Notification history persisted across restarts | NOT STARTED (in-memory, as before) |
+| OSD (volume, mic, brightness) | DONE |
+| Wallpapers: per-display, blur, animated GIF (gated) | DONE |
+| Explicit layer namespaces (`aether-*`) for compositor blur rules | DONE |
+| Fixed: WallpaperBackground load error, wallpaper path injection, missing colour tokens, unheard shell notifications, Slider/Switch binding breakage, detached app launching | DONE |
+| Tray right-click menus | NOT STARTED (unchanged) |
+| Video wallpapers (mpvpaper etc.) | NOT STARTED — GIF only, by design (cost) |
+| External-monitor brightness (DDC/CI) | NOT STARTED |
+
 ## Not started yet (future phases)
 
 Overview, widget framework (Dashboard's contents are still fixed, not pluggable), wallpaper

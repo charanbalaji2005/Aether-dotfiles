@@ -10,6 +10,9 @@ SUITES=(
     "tests/scripts/scan_repo_hygiene.sh"
     "tests/hyprland/test_config_syntax.sh"
     "tests/shell/test_qml_structure.sh"
+    "tests/shell/test_qml_lint.sh"
+    "tests/config/test_config_files.sh"
+    "tests/python/run_python_tests.sh"
     "tests/integration/test_symlink_lifecycle.sh"
 )
 
@@ -45,6 +48,8 @@ fi
 echo
 echo "  All suites passed."
 echo
-echo "  Not covered by this run (see tests/services/README.md):"
-echo "    - Live QML/Quickshell runtime behavior (no Qt6/Quickshell in this environment)"
+echo "  Not covered by this run (see tests/services/README.md and TEST_REPORT.md):"
+echo "    - Live QML/Quickshell runtime behavior (needs a running Quickshell + Wayland session)"
+echo "    - Real GPUs/drivers: hardware detection is tested against fixture sysfs trees;"
+echo "      on a real machine run: aether graphics verify && aether diagnostics"
 echo "    - Anything requiring an actual Hyprland session, Bluetooth adapter, or PAM auth"

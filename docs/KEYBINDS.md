@@ -1,59 +1,83 @@
 # Keybinds
 
-Source of truth is `config/hypr/keybinds.conf` — this is a readable reference for it. `$mod` is
-Super (the Windows/Command key).
+`$mod` = SUPER. Defined in `config/hypr/keybinds.conf`.
 
-## AetherOS Shell
+## AetherOS shell
 
 | Keys | Action |
 |---|---|
-| `$mod + D` | Toggle application launcher |
-| `$mod + V` | Toggle clipboard history |
-| `$mod + N` | Toggle dashboard |
-| `$mod + I` | Toggle settings |
-| `$mod + B` | Toggle Bluetooth device manager |
-| `$mod + ,` | Toggle notification history |
-| `$mod + Escape` | Toggle power menu |
-| `$mod + L` | Lock session |
-| `Print` | Screenshot (full screen, copied to clipboard) |
-| `Shift + Print` | Screenshot (region select, copied to clipboard) |
+| `SUPER + D` | Application launcher |
+| `SUPER + A` | Control centre |
+| `SUPER + N` | System dashboard |
+| `SUPER + ,` | Notification centre |
+| `SUPER + V` | Clipboard history |
+| `SUPER + I` | Settings |
+| `SUPER + B` | Bluetooth manager |
+| `SUPER + W` | Wallpaper picker (right-click a wallpaper: this display only) |
+| `SUPER + SHIFT + W` | Random wallpaper |
+| `SUPER + CTRL + W` | Next wallpaper |
+| `SUPER + Escape` | Power menu |
+| `SUPER + L` | Lock |
+| `Print` | Screenshot (full) |
+| `SHIFT + Print`, `SUPER + SHIFT + S` | Screenshot (region) |
+
+Inside the launcher: type to search · `↑ ↓` · `PgUp PgDn` · `Home End` · `Enter` launch ·
+`Tab / Shift+Tab` categories · `Ctrl+F` (or right-click) toggle favourite · `Esc`.
 
 ## Applications
 
 | Keys | Action |
 |---|---|
-| `$mod + Return` | Open terminal (kitty) |
-| `$mod + E` | Open file manager |
+| `SUPER + Return` | Terminal (kitty) |
+| `SUPER + E` | File manager |
+| `SUPER + SHIFT + D` | VS Code in the current directory |
 
-## Window management
-
-| Keys | Action |
-|---|---|
-| `$mod + Q` | Close focused window |
-| `$mod + Shift + Q` | Exit Hyprland |
-| `$mod + F` | Toggle fullscreen |
-| `$mod + Space` | Toggle floating |
-| `$mod + P` | Toggle pseudotile |
-| `$mod + J` | Toggle split direction |
-| `$mod + ←/→/↑/↓` | Move focus |
-| `$mod + Shift + ←/→/↑/↓` | Move window |
-| `$mod + Left-click drag` | Move window (floating) |
-| `$mod + Right-click drag` | Resize window (floating) |
-
-## Workspaces
+## Windows
 
 | Keys | Action |
 |---|---|
-| `$mod + 1-0` | Switch to workspace 1-10 |
-| `$mod + Shift + 1-0` | Move window to workspace 1-10 |
-| `$mod + Scroll` | Next/previous workspace |
+| `SUPER + Q` | Close window |
+| `SUPER + F` / `SUPER + SHIFT + F` | Fullscreen / maximise |
+| `SUPER + Space` | Toggle floating |
+| `SUPER + C` | Centre floating window |
+| `SUPER + P` | Pseudo-tile |
+| `SUPER + J` | Toggle split |
+| `SUPER + ←↑→↓` | Move focus |
+| `SUPER + SHIFT + ←↑→↓` | Move window |
+| `SUPER + CTRL + SHIFT + ←↑→↓` | Resize (hold to repeat) |
+| `ALT + Tab` | Cycle windows |
+| `SUPER + drag (left / right)` | Move / resize with the mouse |
+| `SUPER + SHIFT + Q` | Exit Hyprland |
 
-## Media / system
+## Workspaces & monitors
 
 | Keys | Action |
 |---|---|
-| Volume Up/Down | Adjust volume (via `wpctl`) |
-| Mute | Toggle mute |
-| Mic Mute | Toggle mic mute |
-| Brightness Up/Down | Adjust screen brightness |
-| Play/Pause/Next/Prev | MPRIS media control (via `playerctl`) |
+| `SUPER + 1…0` | Go to workspace 1–10 |
+| `SUPER + SHIFT + 1…0` | Move window to workspace |
+| `SUPER + Tab` | Previous workspace |
+| `SUPER + CTRL + ← / →`, `SUPER + scroll` | Previous / next workspace |
+| `SUPER + `` ` `` | Toggle scratchpad |
+| `SUPER + SHIFT + `` ` `` | Move window to scratchpad |
+| `SUPER + ALT + ← / →` | Focus monitor |
+| `SUPER + ALT + SHIFT + ← / →` | Move workspace to monitor |
+| Three-finger swipe | Switch workspace (syntax per Hyprland version, see HYPRLAND_GUIDE.md) |
+
+## Hardware keys
+
+Volume, mute, mic mute, brightness (with on-screen display), play/pause/next/previous.
+
+## Bar mouse actions
+
+| Module | Click | Right / middle click | Scroll |
+|---|---|---|---|
+| Launcher | launcher | settings | |
+| Workspaces | switch | | previous/next |
+| Clock, stats | dashboard | | |
+| Network, battery, sliders | control centre | | |
+| Bluetooth | device manager | toggle power | |
+| Volume | mute | | volume |
+| Microphone | mute | | input gain |
+| Bell | notification centre | toggle Do Not Disturb | |
+| Media | play/pause | | next/previous track |
+| Tray icon | activate | secondary activate (middle) | |

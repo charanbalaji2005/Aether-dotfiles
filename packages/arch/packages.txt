@@ -66,3 +66,8 @@ cmake
 ninja
 gcc
 git
+
+# AetherOS CLI backend (hardware detection, telemetry). Standard library only.
+python
+pciutils
+hwdata

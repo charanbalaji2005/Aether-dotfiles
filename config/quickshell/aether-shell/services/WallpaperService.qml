@@ -19,7 +19,7 @@ Singleton {
     readonly property string _scanScript: [
         'for d in "$HOME/.config/aether-shell/wallpapers" "$HOME/.local/share/wallpapers/aetheros" "$HOME/.local/share/wallpapers" "$HOME/Pictures/Wallpapers" /usr/share/wallpapers /usr/share/backgrounds; do',
         '  [ -d "$d" ] || continue',
-        '  find "$d" -maxdepth 2 -type f \\( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.webp" -o -iname "*.jxl" \\) 2>/dev/null',
+        '  find "$d" -maxdepth 2 -type f \\( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.webp" -o -iname "*.jxl" -o -iname "*.gif" \\) 2>/dev/null',
         'done'
     ].join("\n")
 
@@ -95,9 +95,13 @@ Singleton {
         }
 
         // Write state file and notify daemons
+        // The path is passed as a positional argument ($1), never spliced
+        // into the script text: a file named e.g. `$(rm -rf ~).jpg` must be
+        // treated as data. (The previous version interpolated it — fixed.)
         applyProcess.command = [
-            "bash", "-c",
-            'mkdir -p "$HOME/.config/aether-shell" && echo "' + path + '" > "$HOME/.config/aether-shell/current_wallpaper"'
+            "sh", "-c",
+            'mkdir -p "$HOME/.config/aether-shell" && printf "%s\\n" "$1" > "$HOME/.config/aether-shell/current_wallpaper"',
+            "sh", path
         ];
         applyProcess.running = true;
 
@@ -110,6 +114,33 @@ Singleton {
     function setWallpaper(path) {
         if (!path || path.length === 0) return;
         root._setCurrent(path, true);
+    }
+
+    // ── Per-display wallpapers ─────────────────────────────────────────
+    // Config.appearance.wallpapers maps output name -> path. Outputs without
+    // an entry show the global wallpaper.
+    function wallpaperFor(screenName) {
+        const map = Config.appearance.wallpapers || {};
+        const p = map[screenName];
+        return (p && p.length > 0) ? p : root.currentWallpaper;
+    }
+
+    function setWallpaperFor(screenName, path) {
+        if (!screenName || !path) return;
+        const map = Object.assign({}, Config.appearance.wallpapers || {});
+        map[screenName] = path;
+        Config.appearance.wallpapers = map;
+        EventBus.notificationRequested("Wallpaper Applied", root._humanizeTitle(path.split("/").pop()) + " on " + screenName, "low");
+    }
+
+    function clearWallpaperFor(screenName) {
+        const map = Object.assign({}, Config.appearance.wallpapers || {});
+        delete map[screenName];
+        Config.appearance.wallpapers = map;
+    }
+
+    function isAnimated(path) {
+        return /\.gif$/i.test(path || "");
     }
 
     function randomWallpaper() {
@@ -157,6 +188,16 @@ Singleton {
         return root.wallpapers.filter(function(w) {
             return w.title.toLowerCase().indexOf(q) >= 0 || w.filename.toLowerCase().indexOf(q) >= 0;
         });
+    }
+
+    // If the scan finished before config.json was loaded, the first wallpaper
+    // was picked as a placeholder; switch to the saved choice once Config is ready.
+    Connections {
+        target: Config
+        function onReadyChanged() {
+            const saved = Config.appearance ? Config.appearance.wallpaper : "";
+            if (Config.ready && saved && saved.length > 0 && saved !== root.currentWallpaper) root._setCurrent(saved, false);
+        }
     }
 
     Component.onCompleted: refresh()

@@ -25,6 +25,8 @@ TARGETS=(
     "$HOME/.local/bin/aether-screenshot"
     "$HOME/.local/bin/aether-wallpaper"
     "$HOME/.config/aether-shell/wallpapers"
+    "$HOME/.config/aether-shell/config.json"
+    "$HOME/.config/aether-shell/hypr"
 )
 
 mkdir -p "$BACKUP_DIR"

@@ -1,22 +1,29 @@
 import QtQuick
 import "../../theme"
+import "../../core"
 import "../../components"
 
+// Time and date. Ticks once per minute, aligned to the minute boundary,
+// instead of every second. Click opens the dashboard (calendar + stats).
 Capsule {
     id: root
-    interactive: false
-    implicitWidth: label.implicitWidth + Metrics.spaceMd * 2
+    implicitWidth: label.implicitWidth + Metrics.spaceLg * 2
+    onClicked: EventBus.dashboardRequested()
 
-    property string timeText: Qt.formatDateTime(new Date(), "hh:mm")
-    property string dateText: Qt.formatDateTime(new Date(), "ddd d MMM")
+    property date now: new Date()
+    readonly property string timeText: Qt.formatDateTime(now, Config.general.use24Hour ? "HH:mm" : "h:mm AP")
+    readonly property string dateText: Qt.formatDateTime(now, "ddd d MMM")
 
     Timer {
-        interval: 1000
+        id: tick
+        repeat: false
         running: true
-        repeat: true
+        // Fire just after the next minute starts, then re-arm.
+        interval: 60000 - (new Date().getSeconds() * 1000 + new Date().getMilliseconds()) + 50
         onTriggered: {
-            root.timeText = Qt.formatDateTime(new Date(), "hh:mm");
-            root.dateText = Qt.formatDateTime(new Date(), "ddd d MMM");
+            root.now = new Date();
+            interval = 60000 - (root.now.getSeconds() * 1000 + root.now.getMilliseconds()) + 50;
+            restart();
         }
     }
 
@@ -26,17 +33,24 @@ Capsule {
         spacing: Metrics.spaceSm
 
         Text {
+            anchors.verticalCenter: parent.verticalCenter
             text: root.timeText
             color: Colors.textPrimary
             font.family: Typography.family
             font.pixelSize: Typography.sizeMd
-            font.weight: Typography.weightSemibold
+            font.weight: Typography.weightBold
+        }
+
+        Rectangle {
+            anchors.verticalCenter: parent.verticalCenter
+            width: 3; height: 3; radius: 1.5
+            color: Colors.textMuted
         }
 
         Text {
             anchors.verticalCenter: parent.verticalCenter
             text: root.dateText
-            color: Colors.textMuted
+            color: Colors.textSecondary
             font.family: Typography.family
             font.pixelSize: Typography.sizeSm
         }

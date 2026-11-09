@@ -1,0 +1,23 @@
+# Optional AetherOS packages (Fedora / dnf).
+# Installed with --skip-unavailable (dnf5) / strict=0 (dnf4), so a package
+# that a given Fedora release doesn't ship is skipped instead of failing the
+# whole install. Every feature below hides itself or reports "unavailable"
+# when its package is missing.
+
+# Control centre
+hyprsunset              # night light
+power-profiles-daemon   # battery saver / performance modes (Fedora 41+ may ship tuned-ppd instead; either works)
+nwg-displays            # persistent display layout editor
+
+# Theme
+ImageMagick             # accent colour from wallpaper (`aether theme accent`)
+
+# Graphics diagnostics (`aether graphics detect/verify`)
+vulkan-tools            # vulkaninfo
+libva-utils             # vainfo
+egl-utils               # eglinfo (OpenGL renderer on Wayland)
+glx-utils               # glxinfo (XWayland fallback)
+mesa-vulkan-drivers     # RADV / ANV Vulkan drivers
+
+# Notifications from scripts
+libnotify               # notify-send

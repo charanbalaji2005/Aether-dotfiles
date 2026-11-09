@@ -111,6 +111,45 @@ else
     warn "cliphist watcher isn't running — clipboard history will stay empty until it is (run: systemctl --user enable --now aether-clipboard.service)"
 fi
 
+section "AetherOS backend (aether CLI: telemetry, hardware, graphics)"
+if command -v python3 >/dev/null 2>&1; then
+    pyver="$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null)"
+    if python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
+        pass "python3 $pyver found"
+    else
+        fail "python3 $pyver is too old — the aether backend needs 3.9+"
+    fi
+    if python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import aether.cli' "$REPO_DIR/lib" 2>/dev/null; then
+        pass "aether backend imports cleanly ($REPO_DIR/lib/aether)"
+    else
+        fail "aether backend failed to import — run: python3 -I -c 'import sys; sys.path.insert(0, \"$REPO_DIR/lib\"); import aether.cli'"
+    fi
+else
+    fail "python3 not found — bar/dashboard telemetry falls back to basic CPU/RAM/disk, and aether system/graphics commands won't run"
+fi
+optional_bin lspci "GPU model names fall back to the pci.ids database (pciutils)"
+optional_bin hyprsunset "night light toggle will be unavailable"
+optional_bin powerprofilesctl "battery saver / performance modes will be unavailable (power-profiles-daemon or tuned-ppd)"
+if command -v magick >/dev/null 2>&1 || command -v convert >/dev/null 2>&1; then
+    pass "ImageMagick found (accent colour from wallpaper)"
+else
+    warn "ImageMagick not found — 'accent from wallpaper' won't work"
+fi
+optional_bin vulkaninfo "aether graphics detect can't enumerate Vulkan devices (vulkan-tools)"
+optional_bin vainfo "aether graphics verify can't check video acceleration (libva-utils)"
+if grep -qs "^PCI_ID=10DE:" /sys/bus/pci/devices/*/uevent; then
+    optional_bin nvidia-smi "NVIDIA GPU usage/temperature will show as unavailable (xorg-x11-drv-nvidia-cuda)"
+fi
+
+frag_dir="$HOME/.config/aether-shell/hypr"
+for frag in hardware.conf compat.conf profile.conf; do
+    if [ -f "$frag_dir/$frag" ]; then
+        pass "$frag_dir/$frag exists"
+    else
+        fail "$frag_dir/$frag missing — hyprland.conf sources it; run: aether repair"
+    fi
+done
+
 section "Fonts"
 if command -v fc-list >/dev/null 2>&1; then
     if fc-list | grep -qi "jetbrains mono"; then

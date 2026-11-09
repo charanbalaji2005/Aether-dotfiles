@@ -2,7 +2,9 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 import "../../theme"
+import "../../core"
 import "../../services"
 
 // Toggle from Hyprland with:
@@ -14,7 +16,10 @@ Scope {
         id: window
         visible: false
         focusable: true
-        screen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
+        screen: ShellState.activeScreen ? ShellState.activeScreen : (Quickshell.screens.length > 0 ? Quickshell.screens[0] : null)
+        WlrLayershell.namespace: "aether-clipboard"
+        WlrLayershell.layer: WlrLayer.Top
+        exclusionMode: ExclusionMode.Ignore
         anchors { top: true; bottom: true; left: true; right: true }
         color: "transparent"
 
@@ -178,6 +183,11 @@ Scope {
                 }
             }
         }
+    }
+
+    Connections {
+        target: EventBus
+        function onClosePopups(except) { if (except !== "aether-clipboard" && window.visible) window.close(); }
     }
 
     IpcHandler {

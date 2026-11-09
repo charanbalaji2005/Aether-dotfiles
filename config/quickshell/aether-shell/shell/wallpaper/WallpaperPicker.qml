@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 import "../../theme"
 import "../../services"
 import "../../components"
@@ -17,7 +18,10 @@ Scope {
         id: window
         visible: false
         focusable: true
-        screen: Quickshell.screens.length > 0 ? Quickshell.screens[0] : null
+        screen: ShellState.activeScreen ? ShellState.activeScreen : (Quickshell.screens.length > 0 ? Quickshell.screens[0] : null)
+        WlrLayershell.namespace: "aether-wallpicker"
+        WlrLayershell.layer: WlrLayer.Top
+        exclusionMode: ExclusionMode.Ignore
 
         anchors { top: true; bottom: true; left: true; right: true }
         color: "transparent"
@@ -294,8 +298,14 @@ Scope {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    WallpaperService.setWallpaper(item.path);
+                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                // Left-click: all displays. Right-click: only the
+                                // display this picker is open on.
+                                onClicked: function(mouse) {
+                                    if (mouse.button === Qt.RightButton && window.screen)
+                                        WallpaperService.setWallpaperFor(window.screen.name, item.path);
+                                    else
+                                        WallpaperService.setWallpaper(item.path);
                                 }
                             }
                         }
@@ -334,6 +344,12 @@ Scope {
                 }
             }
         }
+    }
+
+    Connections {
+        target: EventBus
+        function onClosePopups(except) { if (except !== "aether-wallpicker" && window.visible) window.close(); }
+        function onWallpaperPickerRequested() { EventBus.closePopups("aether-wallpicker"); window.open(); }
     }
 
     IpcHandler {

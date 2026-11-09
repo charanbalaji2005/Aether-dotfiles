@@ -1,64 +1,112 @@
 # Troubleshooting
 
-## Run the doctor first
+## Start here
 
+```sh
+aether diagnostics      # dependencies, Hyprland config, graphics, power, sensors — saved report
+aether repair --dry-run # what it would fix; then `aether repair`
 ```
-aether doctor
-```
 
-Reports which required/optional tools are missing and whether Hyprland/the shell are actually
-running. Most "X isn't working" issues are a missing dependency this will catch.
+`aether diagnostics` writes `~/.local/state/aether/diagnostics-<timestamp>.txt` — attach it to
+bug reports. The CLI's own log is `~/.local/state/aether/aether.log`.
 
-## The shell didn't start / bar is missing
+## Hyprland doesn't start / black screen after login
 
-- Check the log: `aether logs` (tails `/tmp/aether-shell.log`)
-- Confirm `qs` is on `PATH`: `command -v qs`
-- Try running it in the foreground to see the actual error: `qs -c aether-shell`
+1. **Ctrl+Alt+F3**, log in on the TTY.
+2. `Hyprland -c ~/.config/hypr/recovery.conf` — minimal config with no GPU environment; a
+   terminal opens. If this works, the problem is in the normal config or the GPU fragment.
+3. `aether hyprland` — runs `Hyprland --verify-config` and shows the offending lines.
+4. After a Hyprland upgrade: `aether hyprland compat` (rewrites version-specific syntax).
+5. GPU fragment suspected: `mv ~/.config/aether-shell/hypr/hardware.conf{,.off} && aether repair`.
+6. NVIDIA: `aether graphics verify` (module not loaded / unsigned under Secure Boot / modeset off).
+   See [NVIDIA_GUIDE.md](NVIDIA_GUIDE.md) §3 and §7.
 
-## Blur isn't showing on the bar/launcher/dashboard
+## The bar / shell is missing
 
-QML can't blur behind its own window — the blur comes from Hyprland's `layerrule`, matched by
-layer namespace. Run `hyprctl layers` while the shell is running and check the actual namespace
-Quickshell registered; if it's not `quickshell:aether-shell`, update the regex in
-`config/hypr/rules.conf` to match what you see.
+- `aether logs` (journal of `aether-shell.service`, or `$XDG_RUNTIME_DIR/aether-shell.log`).
+- `command -v qs` — Quickshell built from source installs to `/usr/local/bin`.
+- Run in the foreground to see QML errors: `qs -c aether-shell`.
+- `systemctl --user status aether-shell.service`. After 5 crashes in 30 s systemd stops
+  restarting it (to avoid a CPU-burning loop); `aether shell-reload` starts it again.
+- Invalid `~/.config/aether-shell/config.json`: `aether repair` moves it aside and the shell
+  recreates defaults.
+
+## Panel shows "Unavailable" for a metric
+
+That's deliberate — the panel never invents numbers. Settings → About shows which backends work.
+
+| Metric | Needs |
+|---|---|
+| Any temperature / GPU / network / process list | the `aether` backend: `python3`; check `aether telemetry` prints JSON |
+| CPU temperature | a `coretemp` (Intel) / `k10temp` (AMD) hwmon sensor — `aether cpu` shows it |
+| NVIDIA usage/temp/VRAM | `nvidia-smi` (`xorg-x11-drv-nvidia-cuda`) and the proprietary driver |
+| NVIDIA on a hybrid laptop shows "asleep" | normal: the dGPU is runtime-suspended and isn't woken just to read it |
+| Intel GPU usage | not readable without root (`intel_gpu_top`); clock is shown instead |
+| VRAM on Intel | integrated GPUs share system RAM |
+
+If the dashboard says **"Basic mode — AetherOS backend unavailable"**, the shell fell back to
+reading `/proc` directly: CPU/RAM/disk still work; fix `python3`/the repo path for the rest.
+
+## Control centre tiles are greyed out
+
+Each tile names what's missing in its subtitle:
+
+- Night Light → `sudo dnf install hyprsunset`
+- Battery Saver / Performance → `power-profiles-daemon` (or `tuned-ppd`) must be running;
+  *"Not offered by this CPU"* means the platform has no performance profile.
+- Wi-Fi → NetworkManager not running, or no Wi-Fi adapter.
+- Brightness slider missing → no backlight device (desktops). External monitors over DDC/CI
+  are not controlled.
+
+## Wi-Fi: "Secrets were required, but not provided"
+
+The password was wrong or empty. Click the network again to re-enter it. Saved networks show
+*Saved* and can be forgotten with the bin icon.
+
+## Blur isn't showing on the bar/panels
+
+QML can't blur behind itself; Hyprland does it via `layerrule`s in `config/hypr/rules.conf`,
+matched by the explicit namespaces the shell sets (`aether-bar`, `aether-launcher`, …).
+`hyprctl layers` lists the namespaces. Also check Settings → Appearance → Background blur isn't
+*Off*, and that the Hyprland profile isn't `battery`/`low-latency` (both disable blur).
+
+## Accent from wallpaper does nothing
+
+Needs ImageMagick (`magick` or `convert`). Test: `aether theme accent ~/Pictures/x.jpg`. The
+error, if any, is shown under the setting.
 
 ## Clipboard history is always empty
 
-`cliphist` only records what's actively piped to it. Confirm this is running:
-```
+```sh
+systemctl --user status aether-clipboard.service
 pgrep -af "wl-paste --watch cliphist"
 ```
-If not, check that `exec-once = wl-paste --watch cliphist store` is present in
-`config/hypr/hyprland.conf` and that you reloaded/relogged after adding it.
+Enable it with `systemctl --user enable --now aether-clipboard.service`.
 
-## Lock screen: password doesn't work / lock screen won't appear
+## Screenshots aren't captured
 
-- Confirm your compositor supports `ext-session-lock-v1` — Hyprland does; GNOME and current KWin
-  don't. If you're not on Hyprland, this won't work regardless of config.
-- The PAM integration in `shell/lockscreen/LockScreen.qml` is flagged in the shell's own
-  PROGRESS.md as unverified against Quickshell's exact API (its docs site blocks automated
-  fetching, so this wasn't tested against an authoritative source). If authentication silently
-  doesn't work, that's the most likely cause — check Quickshell's actual `PamContext` docs for
-  your installed version and adjust the property/method names in `LockScreen.qml` if they differ.
-- **Keep a TTY accessible (Ctrl+Alt+F2) the first time you test locking**, so you're not stuck if
-  something's wrong.
+Requires `grim` (and `slurp` for region select). Files go to `~/Pictures/Screenshots/`. Under
+systemd the shell finds `aether-screenshot` because `aether-shell.service` adds `~/.local/bin`
+to PATH — if you start `qs` some other way, make sure `~/.local/bin` is on your PATH.
 
-## Screenshots aren't captured / clipboard doesn't get the image
+## Lock screen: password doesn't work
 
-Requires `grim` (and `slurp` for region select) on `PATH`. Full-disk screenshots save to
-`~/Pictures/Screenshots/`; check that directory exists and is writable.
+- `ext-session-lock-v1` is needed (Hyprland has it).
+- The PAM integration is flagged unverified against Quickshell's exact API (see the shell's
+  PROGRESS.md) and fails safe (won't unlock without auth). **Keep a TTY available the first time
+  you lock.**
 
-## GTK apps look inconsistent with the rest of the theme
+## Suspend / resume problems on NVIDIA
 
-`theme/gtk/gtk-3.0/gtk.css` and `gtk-4.0/gtk.css` are an original AetherOS stylesheet (not stock
-Adwaita), but they haven't been visually verified — no GTK/display server exists in the
-environment they were written in. If something looks off, that's the most likely reason; check
-the file's own header comments for what's and isn't covered (GTK4 in particular only styles a
-small, conservative subset — see that file for why).
+`aether graphics verify` checks `PreserveVideoMemoryAllocations` and `nvidia-suspend.service`.
+RPM Fusion's `xorg-x11-drv-nvidia-power` package enables both.
+
+## GTK apps look inconsistent
+
+`theme/gtk/*/gtk.css` is an original dark stylesheet; light mode switches libadwaita/GTK4 apps via
+`gsettings color-scheme` (Settings → Appearance → Sync GTK apps), but the custom GTK3 stylesheet
+itself is dark-only.
 
 ## Quickshell build fails
 
-`install.sh` builds Quickshell from source since no official Fedora package exists as of this
-writing. Its build dependencies can change — if the build fails, check
-[quickshell.org](https://quickshell.org) for current instructions before assuming the repo's
-`hyprland.conf`/shell config are at fault.
+Check [quickshell.org](https://quickshell.org) for current build dependencies; they change.

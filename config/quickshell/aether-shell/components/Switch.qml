@@ -1,6 +1,9 @@
 import QtQuick
 import "../theme"
 
+// Toggle switch. `checked` should be bound to the real state; clicking
+// emits toggled(newState) and does NOT assign `checked` itself, so the
+// binding is never broken (the source of truth updates, the switch follows).
 Rectangle {
     id: root
 
@@ -28,9 +31,6 @@ Rectangle {
     MouseArea {
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
-        onClicked: {
-            root.checked = !root.checked;
-            root.toggled(root.checked);
-        }
+        onClicked: root.toggled(!root.checked)
     }
 }

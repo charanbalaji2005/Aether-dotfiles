@@ -1,29 +1,95 @@
 pragma Singleton
+import QtQuick
 import Quickshell
 import Quickshell.Services.Notifications
 import "../core"
 
+// The desktop's one freedesktop notification daemon (Quickshell's
+// NotificationServer). AetherOS deliberately runs no second daemon (mako,
+// dunst, swaync) — two servers would fight over org.freedesktop.Notifications.
+//
+// Also turns shell-originated events (EventBus.notificationRequested:
+// "Screenshot saved", "Wallpaper applied", ...) into real toasts, which
+// previously went nowhere.
 Singleton {
     id: root
 
     readonly property bool available: true
     property var activeNotifications: []
-    property bool doNotDisturb: false
+    readonly property bool doNotDisturb: Config.notifications.doNotDisturb === true
 
-    // Plain JS snapshots, not live Notification objects — once a
-    // notification is dismissed/tracked=false its underlying object's
-    // lifetime isn't something this was able to verify as safe to hold a
-    // reference to indefinitely, so history stores a copy taken at arrival
-    // time instead.
+    // Plain JS snapshots taken at arrival time, not live Notification
+    // objects — a dismissed notification's object lifetime isn't something
+    // to hold onto indefinitely.
     property var history: []
     readonly property int historyLimit: 100
+    property int unread: 0
+    property int _nextId: 1
+
+    // Toast expiry bookkeeping: [{ n, at }]. One timer serves all toasts.
+    property var _expiry: []
 
     function toggleDnd() {
-        root.doNotDisturb = !root.doNotDisturb;
+        Config.notifications.doNotDisturb = !root.doNotDisturb;
     }
 
     function clearHistory() {
         root.history = [];
+        root.unread = 0;
+    }
+
+    function markRead() {
+        root.unread = 0;
+    }
+
+    function removeFromHistory(id) {
+        root.history = root.history.filter(function(h) { return h.id !== id; });
+    }
+
+    function clearApp(appName) {
+        root.history = root.history.filter(function(h) { return h.appName !== appName; });
+    }
+
+    // History grouped by application, newest group first.
+    function grouped() {
+        const groups = [];
+        const index = {};
+        for (let i = root.history.length - 1; i >= 0; i--) {
+            const h = root.history[i];
+            const key = h.appName || h.summary;
+            if (index[key] === undefined) {
+                index[key] = groups.length;
+                groups.push({ app: key, appIcon: h.appIcon, items: [] });
+            }
+            groups[index[key]].items.push(h);
+        }
+        return groups;
+    }
+
+    function _record(snapshot) {
+        snapshot.id = root._nextId++;
+        root.history = root.history.concat([snapshot]).slice(-root.historyLimit);
+        root.unread += 1;
+    }
+
+    function _show(n, urgency, timeoutHint) {
+        // Keep at most maxVisible toasts; the oldest non-critical goes first.
+        let list = root.activeNotifications.concat([n]);
+        const maxVisible = Math.max(1, Config.notifications.maxVisible || 4);
+        while (list.length > maxVisible) {
+            let drop = list.findIndex(function(x) { return x.urgency !== NotificationUrgency.Critical; });
+            if (drop < 0) drop = 0;
+            const victim = list[drop];
+            list.splice(drop, 1);
+            root._release(victim);
+        }
+        root.activeNotifications = list;
+        // Quickshell reports expireTimeout in seconds (the D-Bus wire value is
+        // ms). Values up to 10 minutes are treated as seconds; anything larger
+        // must already be milliseconds.
+        const hintMs = timeoutHint > 0 ? (timeoutHint <= 600 ? timeoutHint * 1000 : timeoutHint) : 0;
+        const timeout = hintMs > 0 ? hintMs : root._defaultTimeout(urgency);
+        if (timeout > 0) root._expiry = root._expiry.concat([{ n: n, at: Date.now() + timeout }]);
     }
 
     NotificationServer {
@@ -34,31 +100,57 @@ Singleton {
 
         onNotification: function(notification) {
             notification.tracked = true;
-
-            const snapshot = {
+            root._record({
                 summary: notification.summary || notification.appName || "Notification",
                 body: notification.body || "",
                 appName: notification.appName || "",
+                appIcon: notification.appIcon || "",
+                image: notification.image || "",
                 urgency: root._urgencyName(notification.urgency),
                 time: new Date().toISOString()
-            };
-            root.history = root.history.concat([snapshot]).slice(-root.historyLimit);
+            });
 
-            if (root.doNotDisturb) {
-                Logger.info("NotificationService", "Suppressed by Do Not Disturb: " + snapshot.summary);
+            if (root.doNotDisturb && notification.urgency !== NotificationUrgency.Critical) {
+                Logger.info("NotificationService", "Suppressed by Do Not Disturb: " + (notification.summary || ""));
+                notification.tracked = false;
                 return;
             }
-
-            root.activeNotifications = root.activeNotifications.concat([notification]);
-
-            EventBus.notificationRequested(snapshot.summary, snapshot.body, snapshot.urgency);
-
-            const timeout = notification.expireTimeout > 0
-                ? notification.expireTimeout
-                : root._defaultTimeout(notification.urgency);
-            if (timeout > 0) {
-                root._scheduleDismiss(notification, timeout);
+            // When the sending app retracts/closes it, drop the toast too
+            // (otherwise it would linger as an empty card).
+            if (notification.closed && typeof notification.closed.connect === "function") {
+                notification.closed.connect(function() {
+                    root.activeNotifications = root.activeNotifications.filter(function(n) { return n !== notification; });
+                    root._expiry = root._expiry.filter(function(e) { return e.n !== notification; });
+                });
             }
+            root._show(notification, notification.urgency, notification.expireTimeout);
+        }
+    }
+
+    Connections {
+        target: EventBus
+        function onNotificationRequested(title, body, urgency) {
+            const u = urgency === "critical" ? NotificationUrgency.Critical
+                : urgency === "low" ? NotificationUrgency.Low : NotificationUrgency.Normal;
+            root._record({ summary: title, body: body || "", appName: "AetherOS", appIcon: "", image: "",
+                           urgency: urgency || "normal", time: new Date().toISOString() });
+            if (root.doNotDisturb && u !== NotificationUrgency.Critical) return;
+            // A plain object shaped like a Notification for the toast UI.
+            root._show({ summary: title, body: body || "", appName: "AetherOS", appIcon: "", image: "",
+                         urgency: u, actions: [], local: true, tracked: true }, u, 0);
+        }
+    }
+
+    Timer {
+        interval: 500
+        repeat: true
+        running: root._expiry.length > 0
+        onTriggered: {
+            const now = Date.now();
+            const due = root._expiry.filter(function(e) { return e.at <= now; });
+            if (due.length === 0) return;
+            root._expiry = root._expiry.filter(function(e) { return e.at > now; });
+            for (const e of due) root.dismiss(e.n);
         }
     }
 
@@ -70,29 +162,24 @@ Singleton {
 
     function _defaultTimeout(u) {
         if (u === NotificationUrgency.Critical) return 0; // stays until dismissed
-        if (u === NotificationUrgency.Low) return 4000;
-        return 6000;
+        if (u === NotificationUrgency.Low) return Config.notifications.timeoutLow || 4000;
+        return Config.notifications.timeoutNormal || 6000;
     }
 
-    function _scheduleDismiss(notification, ms) {
-        try {
-            const timer = Qt.createQmlObject(
-                "import QtQuick; Timer { interval: " + ms + "; running: true; repeat: false }",
-                root,
-                "aetherNotifTimer"
-            );
-            timer.triggered.connect(function() {
-                root.dismiss(notification);
-                timer.destroy();
-            });
-        } catch (e) {
-            Logger.error("NotificationService", "Failed to schedule auto-dismiss: " + e);
-        }
+    // Hide the toast; the server-side notification stays tracked only while shown.
+    function _release(notification) {
+        root._expiry = root._expiry.filter(function(e) { return e.n !== notification; });
+        if (notification && !notification.local) notification.tracked = false;
     }
 
     function dismiss(notification) {
         root.activeNotifications = root.activeNotifications.filter(function(n) { return n !== notification; });
-        notification.tracked = false;
+        root._release(notification);
+    }
+
+    function dismissAll() {
+        for (const n of root.activeNotifications) root._release(n);
+        root.activeNotifications = [];
     }
 
     function invokeAction(notification, action) {

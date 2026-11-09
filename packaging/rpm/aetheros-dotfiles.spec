@@ -1,5 +1,5 @@
 Name:           aetheros-dotfiles
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        AetherOS Hyprland dotfiles and Quickshell desktop shell
 
@@ -18,6 +18,10 @@ BuildArch:      noarch
 Requires:       hyprland
 Requires:       kitty
 Requires:       zsh
+Requires:       python3
+Recommends:     pciutils
+Recommends:     hwdata
+Recommends:     mokutil
 
 %description
 AetherOS dotfiles: Hyprland configuration, the AetherOS Shell (Quickshell),
@@ -48,6 +52,7 @@ cp -a . %{buildroot}%{_datadir}/%{name}/
 rm -rf %{buildroot}%{_datadir}/%{name}/.git
 rm -rf %{buildroot}%{_datadir}/%{name}/.github
 find %{buildroot}%{_datadir}/%{name} -name ".gitignore" -delete
+find %{buildroot}%{_datadir}/%{name} -name "__pycache__" -type d -prune -exec rm -rf {} +
 
 mkdir -p %{buildroot}%{_bindir}
 ln -s ../share/%{name}/scripts/setup-symlinks.sh \
@@ -72,6 +77,12 @@ ln -s ../share/%{name}/scripts/bin/aether-wallpaper \
 %{_bindir}/aether-wallpaper
 
 %changelog
+* Mon Nov 09 2026 AetherOS Project <noreply@example.invalid> - 0.2.0-1
+- aether CLI backend (lib/aether): hardware detection, graphics/NVIDIA
+  management, telemetry, performance profiles, diagnostics, repair.
+- Shell: control centre, system dashboard, launcher favourites/recents,
+  notification grouping, OSD, design system with light theme.
+
 * Sat Aug 22 2026 AetherOS Project <noreply@example.invalid> - 0.1.0-1
 - Initial packaging: Hyprland config, Aether Shell, terminal/shell config,
   install/backup/restore/uninstall scripts.

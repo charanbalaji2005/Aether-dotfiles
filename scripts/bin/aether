@@ -1,8 +1,10 @@
 #!/usr/bin/bash
-# aether — convenience CLI for AetherOS session/shell operations.
-# This is a fresh implementation for this dotfiles repo, not a recovery of
-# any earlier version — install it via scripts/setup-symlinks.sh (it links
-# ~/.local/bin/aether -> this file).
+# aether — AetherOS command-line tool.
+#
+# Session commands (reload, lock, launcher, ...) are implemented here in
+# bash. Hardware, graphics, performance and diagnostics commands are
+# implemented in Python (lib/aether/, standard library only) and dispatched
+# below. Install via scripts/setup-symlinks.sh (links ~/.local/bin/aether).
 
 set -euo pipefail
 
@@ -10,28 +12,85 @@ SHELL_NAME="aether-shell"
 
 usage() {
     cat <<'EOF'
-aether — AetherOS session helper
+aether — AetherOS desktop tools
 
-Usage: aether <command> [args]
+Usage: aether <command> [args]        (aether <command> --help for details)
 
-Commands:
-  reload            Reload Hyprland config and restart the shell
-  shell-reload      Restart only the Quickshell shell (aether-shell)
-  lock              Lock the session
-  screenshot [full|region]   Take a screenshot (default: full)
-  launcher          Toggle the application launcher
-  clipboard         Toggle clipboard history
-  dashboard         Toggle the dashboard
-  wallpaper [args]  Wallpaper manager (random, next, prev, select, set)
-  logs              Tail the shell's log file
-  doctor            Check that required dependencies are installed
-  update            Pull latest dotfiles and re-apply symlinks
-  help              Show this message
+System & hardware
+  system                 OS, kernel, session, Secure Boot, Hyprland version
+  hardware               CPU, GPUs, memory, storage, battery overview
+  cpu [--watch]          CPU model, topology, frequency, governor, temperature, usage
+  gpu [--watch]          GPU usage, temperature, VRAM, power
+  gpu run <cmd...>       Run a program on the discrete GPU (hybrid laptops)
+
+Graphics drivers (Fedora)
+  graphics detect        Detect GPUs, drivers, Mesa, OpenGL, Vulkan, VA-API, CUDA
+  graphics drivers       Recommended driver/codec packages per GPU (installs nothing)
+  graphics verify        PASS/WARN/FAIL checks of the running graphics stack
+  graphics install-nvidia  Install the matching RPM Fusion NVIDIA driver (asks first)
+  graphics configure     Write Hyprland GPU settings for this machine
+
+Performance & maintenance
+  performance [status|list|set <profile>|hyprland <profile>]
+  diagnostics            Full health report (saved to ~/.local/state/aether/)
+  repair [--dry-run]     Fix missing fragments, broken links, invalid config
+  hyprland               Validate the Hyprland configuration
+  theme accent <image>   Derive an accent colour from an image
+  theme mode <dark|light|auto>
+  update                 Pull latest dotfiles, re-apply symlinks, validate
+
+Session
+  reload                 Reload Hyprland config and restart the shell
+  shell-reload           Restart only the shell (aether-shell)
+  lock                   Lock the session
+  screenshot [full|region]
+  launcher | clipboard | dashboard | controlcenter | notifications
+  wallpaper [args]       Wallpaper manager (random, next, prev, select, set)
+  logs                   Follow the shell's log
+  doctor                 Dependency check (also part of `aether diagnostics`)
+  help                   Show this message
 EOF
 }
 
+script_dir() {
+    dirname "$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
+}
+
+repo_dir() {
+    local d
+    d="$(cd "$(script_dir)/../.." && pwd)"
+    if [ -d "$d/lib/aether" ]; then
+        echo "$d"
+    elif [ -d /usr/share/aetheros-dotfiles/lib/aether ]; then
+        echo /usr/share/aetheros-dotfiles
+    else
+        echo "$d"
+    fi
+}
+
+# Runs the Python backend. -I (isolated mode) ignores PYTHONPATH, user
+# site-packages and the current directory, so nothing outside lib/ can be
+# imported by accident.
+py() {
+    local lib
+    lib="$(repo_dir)/lib"
+    if [ ! -d "$lib/aether" ]; then
+        echo "aether: Python backend not found at $lib/aether" >&2
+        exit 1
+    fi
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "aether: python3 is required for '$1' (sudo dnf install python3)" >&2
+        exit 1
+    fi
+    exec python3 -I -c 'import sys; sys.path.insert(0, sys.argv.pop(1)); from aether.cli import main; sys.exit(main(sys.argv[1:]))' "$lib" "$@"
+}
+
 ipc() {
-    qs -c "$SHELL_NAME" ipc call "$1" "$2"
+    if ! command -v qs >/dev/null 2>&1; then
+        echo "aether: Quickshell (qs) is not installed" >&2
+        exit 1
+    fi
+    qs -c "$SHELL_NAME" ipc call "$@"
 }
 
 cmd_reload() {
@@ -44,33 +103,34 @@ cmd_shell_reload() {
         systemctl --user restart aether-shell.service
         echo "aether-shell restarted (systemd: aether-shell.service)"
     else
-        pkill -x qs 2>/dev/null || pkill -f "qs -c $SHELL_NAME" 2>/dev/null || true
+        local log="${XDG_RUNTIME_DIR:-/tmp}/aether-shell.log"
+        pkill -f "qs -c $SHELL_NAME" 2>/dev/null || true
         sleep 0.3
-        nohup qs -c "$SHELL_NAME" >/tmp/aether-shell.log 2>&1 &
+        nohup qs -c "$SHELL_NAME" >"$log" 2>&1 &
         disown
-        echo "aether-shell restarted (log: /tmp/aether-shell.log)"
+        echo "aether-shell restarted (log: $log)"
     fi
 }
 
 cmd_logs() {
+    local log="${XDG_RUNTIME_DIR:-/tmp}/aether-shell.log"
     if command -v systemctl >/dev/null 2>&1 && systemctl --user is-active --quiet aether-shell.service 2>/dev/null; then
         journalctl --user -u aether-shell.service -f
-    elif [ -f /tmp/aether-shell.log ]; then
-        tail -f /tmp/aether-shell.log
+    elif [ -f "$log" ]; then
+        tail -f "$log"
     else
-        echo "No /tmp/aether-shell.log found and aether-shell.service is not active." >&2
+        echo "No $log found and aether-shell.service is not active." >&2
+        exit 1
     fi
 }
 
 cmd_doctor() {
-    local script_dir
-    script_dir="$(dirname "$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")")"
-    if [ -f "$script_dir/../doctor.sh" ]; then
-        exec "$script_dir/../doctor.sh"
+    local d
+    d="$(repo_dir)"
+    if [ -f "$d/scripts/doctor.sh" ]; then
+        exec bash "$d/scripts/doctor.sh"
     elif command -v aetheros-dotfiles-doctor >/dev/null 2>&1; then
         exec aetheros-dotfiles-doctor
-    elif [ -f /usr/share/aetheros-dotfiles/scripts/doctor.sh ]; then
-        exec /usr/share/aetheros-dotfiles/scripts/doctor.sh
     else
         echo "Could not locate doctor.sh" >&2
         exit 1
@@ -78,10 +138,10 @@ cmd_doctor() {
 }
 
 cmd_wallpaper() {
-    local script_dir
-    script_dir="$(dirname "$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")")"
-    if [ -f "$script_dir/aether-wallpaper" ]; then
-        exec "$script_dir/aether-wallpaper" "$@"
+    local d
+    d="$(script_dir)"
+    if [ -f "$d/aether-wallpaper" ]; then
+        exec "$d/aether-wallpaper" "$@"
     elif command -v aether-wallpaper >/dev/null 2>&1; then
         exec aether-wallpaper "$@"
     else
@@ -90,24 +150,39 @@ cmd_wallpaper() {
     fi
 }
 
+cmd_update() {
+    local d
+    d="$(repo_dir)"
+    bash "$d/scripts/update.sh"
+}
+
 case "${1:-help}" in
+    system|hardware|cpu|gpu|graphics|performance|diagnostics|repair|hyprland|theme|telemetry)
+        py "$@"
+        ;;
+    --version) py --version ;;
     reload) cmd_reload ;;
     shell-reload) cmd_shell_reload ;;
     lock) ipc sessionlock lock ;;
     screenshot)
         mode="${2:-full}"
-        ipc screenshot "$mode"
+        case "$mode" in
+            full|region) ipc screenshot "$mode" ;;
+            *) echo "screenshot mode must be 'full' or 'region'" >&2; exit 2 ;;
+        esac
         ;;
     launcher) ipc launcher toggle ;;
     clipboard) ipc clipboard toggle ;;
     dashboard) ipc dashboard toggle ;;
+    controlcenter|control-center) ipc controlcenter toggle ;;
+    notifications) ipc notifications toggle ;;
     wallpaper)
         shift
         cmd_wallpaper "$@"
         ;;
     logs) cmd_logs ;;
     doctor) cmd_doctor ;;
-    update) bash "$(dirname "$(readlink -f "$0")")/../update.sh" ;;
+    update) cmd_update ;;
     help|-h|--help) usage ;;
     *)
         echo "Unknown command: $1" >&2

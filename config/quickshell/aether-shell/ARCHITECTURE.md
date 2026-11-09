@@ -50,6 +50,32 @@ Active-window title in the bar is fetched via `hyprctl -j activewindow` (Process
 guessed QML properties, refreshed on every Hyprland IPC event plus a 2s fallback poll — this
 avoids relying on internal Quickshell type fields that aren't part of its documented public API.
 
+## Services added in 0.2.0
+
+| Service | Wraps | Notes |
+|---|---|---|
+| `SystemMonitorService` (rewritten) | `aether telemetry --stream` (one long-lived process) | CPU/RAM/swap/disk/net/GPU/temps/load/uptime + 60-sample histories; process table only while the dashboard asks; falls back to the original `/proc` polling if the backend can't run |
+| `HardwareService` | `aether hardware --json` (once, lazily) | static facts for the dashboard/About |
+| `ThemeService` | config + `gsettings` + `aether theme accent` + `hyprctl keyword` | dark/light/auto, GTK sync, wallpaper accent, blur override re-applied after config reloads |
+| `BrightnessService` | `brightnessctl` | debounced writes, clamped to ≥1 % |
+| `NightLightService` | `hyprsunset` | on = process running |
+| `PowerProfileService` | `powerprofilesctl` | battery saver / performance |
+| `DisplayService` | `hyprctl -j monitors`, `hyprctl keyword monitor`, `nwg-displays` | runtime scale changes, says so in the UI |
+| `NetworkService` (extended) | `nmcli` | radio, `--rescan no` polling, on-demand scan, connect/disconnect/forget; terse-field escaping handled |
+| `AudioService` (extended) | PipeWire + `wpctl set-default` | device lists, input volume, OSD events |
+| `NotificationService` (extended) | NotificationServer | grouping, unread, single expiry timer, config timeouts, local (shell) notifications |
+
+## Bridges (the only places layers meet)
+
+`shell.qml` binds `Colors.{accent,dark,glassOpacity}`, `Motion.{reducedMotion,speed}` and
+`ShellState.{activeScreen,onBattery}` from Config/services. `theme/`, `core/` and `components/`
+therefore never import `services/`. `PopupPanel` (components) reads `ShellState.activeScreen` to
+open on the focused monitor and listens to `EventBus.closePopups` so only one popup is open.
+
+Helpers are always started through `Paths.helper(name, args)` / `Paths.aether(args)`:
+`sh -c 'PATH="$HOME/.local/bin:$PATH"; exec "$0" "$@"' name args…` — arguments are positional,
+never interpolated into the script.
+
 ## Config
 
 `core/Config.qml` uses Quickshell's `FileView` + `JsonAdapter` pattern: a JSON file on disk is

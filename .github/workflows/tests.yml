@@ -22,6 +22,38 @@ jobs:
       - name: QML brace/paren/import structural check
         run: bash tests/shell/test_qml_structure.sh
 
+  python-backend:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: aether CLI unit tests (hardware/graphics/telemetry fixtures)
+        run: bash tests/python/run_python_tests.sh
+
+  qml-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Qt's qmllint (via PySide6)
+        run: pip install PySide6-Essentials
+      - name: QML syntax check
+        run: QMLLINT=pyside6-qmllint bash tests/shell/test_qml_lint.sh
+
+  config-files:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: systemd units, package lists, JSON, config schema, IPC targets
+        run: bash tests/config/test_config_files.sh
+
   install-lifecycle:
     runs-on: ubuntu-latest
     steps:
