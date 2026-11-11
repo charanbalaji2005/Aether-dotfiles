@@ -3,6 +3,39 @@
 Dates reflect when each phase was built, not calendar releases — this hasn't been tagged/released
 yet (see top-level `PROGRESS.md` for current status before treating anything below as "shipped").
 
+## 1.0.0-rc.2 — 2026-11-11
+
+Release hardening — no new features. Status: **ready for private testing**; publisher identity
+(`tools/set-publisher.sh`) and the hardware checklist (docs/HARDWARE.md) are required before a
+public release candidate.
+
+### Security
+- Lock screen verified against Quickshell's PAM API source (password over a private pipe to a
+  forked PAM helper). Fixed: `pam.start()` failure was ignored (field stuck for 30 s); in-flight
+  conversations are aborted on teardown. Optional hyprlock backend (Settings → Lock screen).
+- Widgets: third-party widgets off by default; explicit trust pinned to a SHA-256 of the files;
+  install ≠ trust; safe mode and `aether recover` disable them; stricter static checks.
+
+### Fixed
+- Packaged entry points (`/usr/bin/aetheros-dotfiles-setup` …) crashed: 11 scripts located
+  themselves through the symlink.
+- GPU: widgets showed unavailable values as 0; hybrid dGPU detail counters never reached the
+  dashboard; System Centre read a non-existent field; NVML session never closed; NVML errors
+  now explain the fix.
+- Network state polled with 4 nmcli processes every 5 s → event-driven (`nmcli monitor`).
+- Installer, uninstall, diagnostics and layouts no longer hide failures (`|| true` audit).
+- RPM Source0/`%setup` didn't match the tarball; PKGBUILD skipped checksums; duplicate wallpaper.
+
+### Verification added
+- Quickshell API conformance checker against v0.2.0 and v0.3.2 (minimum Quickshell: 0.2.0,
+  enforced by the installer); duplicate-assignment check; reproducible tarball; RPM built with
+  rpmbuild + rpmlint; PKGBUILD package() exercised; actionlint; release metadata; symlinked
+  entry points; skipped suites reported as skipped.
+
+### CI
+- Releases require lint + all tests + strict metadata; Fedora job runs the full suite and an RPM
+  build with no suppressed failures; artifacts: tarball, checksum, PKGBUILD, RPM, SRPM.
+
 ## 1.0.0-rc.1 — 2026-11-11
 
 Release candidate for 1.0. Feature-complete and tested in CI-style environments; **not yet

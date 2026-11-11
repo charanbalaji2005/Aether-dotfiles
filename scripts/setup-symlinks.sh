@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 # shellcheck source=SCRIPTDIR/lib/common.sh
 . "$REPO_DIR/scripts/lib/common.sh"
 BACKUP_SUFFIX=".bak.$(date +%Y%m%d-%H%M%S)"

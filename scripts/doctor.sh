@@ -7,7 +7,7 @@
 
 set +e  # we want to keep checking even if individual checks fail
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 PASS=0
 WARN=0
 FAIL=0

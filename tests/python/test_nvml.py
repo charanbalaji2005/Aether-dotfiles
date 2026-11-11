@@ -109,3 +109,12 @@ class NvmlTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InitHints(unittest.TestCase):
+    def test_version_mismatch_explains_the_fix(self):
+        lib = FakeLib()
+        lib.nvmlInit_v2 = lambda: 18
+        with self.assertRaises(nvml.NvmlUnavailable) as cm:
+            nvml.Nvml(lib)
+        self.assertIn("reboot after a driver update", str(cm.exception))

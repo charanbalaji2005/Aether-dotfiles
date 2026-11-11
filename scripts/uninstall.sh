@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 
 # shellcheck source=SCRIPTDIR/lib/common.sh
 . "$REPO_DIR/scripts/lib/common.sh"
@@ -59,9 +59,13 @@ done
 # Stop and disable our user services (they'd fail without their unit files).
 if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
     for unit in "$REPO_DIR"/system/systemd/*.service; do
-        systemctl --user disable --now "$(basename "$unit")" >/dev/null 2>&1 || true
+        u="$(basename "$unit")"
+        # Only units that are enabled or running need stopping; report failures.
+        if systemctl --user is-enabled --quiet "$u" 2>/dev/null || systemctl --user is-active --quiet "$u" 2>/dev/null; then
+            systemctl --user disable --now "$u" >/dev/null 2>&1 || echo "WARNING: couldn't disable $u (systemctl --user disable --now $u)"
+        fi
     done
-    systemctl --user daemon-reload >/dev/null 2>&1 || true
+    systemctl --user daemon-reload >/dev/null 2>&1 || echo "WARNING: systemctl --user daemon-reload failed"
 fi
 
 echo

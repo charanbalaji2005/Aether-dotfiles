@@ -534,3 +534,41 @@ class Fragments(IsolatedHome):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+class LayoutUndoReporting(IsolatedHome):
+    """A layout that can't record its undo state must say so (rc.2)."""
+
+    def ctx(self):
+        cmds = {"hyprctl -j monitors": {"out": json.dumps(MONITOR)}, "hyprctl -j clients": {"out": json.dumps(CLIENTS)}}
+        for c in ("movetoworkspacesilent 3,address:0x1", "setfloating address:0x1", "movetoworkspacesilent 3,address:0x2"):
+            cmds["hyprctl dispatch " + c] = {"out": "ok"}
+        return Context(sysroot="/", command_fixtures=cmds, fixture_bins=["hyprctl"])
+
+    def test_apply_reports_undo_available(self):
+        from aether import layouts
+        res = layouts.apply(self.ctx(), "developer", launch=False, sleep=lambda s: None)
+        self.assertTrue(res["undoAvailable"])
+        self.assertTrue(os.path.exists(layouts.undo_file()))
+
+    def test_unwritable_undo_is_reported_not_hidden(self):
+        from aether import layouts
+        from aether.util import state_dir
+        # Make the state directory a file: the undo file can't be created.
+        parent = os.path.dirname(state_dir())
+        os.makedirs(parent, exist_ok=True)
+        if os.path.isdir(state_dir()):
+            import shutil
+            shutil.rmtree(state_dir())
+        spit(state_dir(), "not a directory")
+        res = layouts.apply(self.ctx(), "developer", launch=False, sleep=lambda s: None)
+        self.assertFalse(res["undoAvailable"])
+        os.remove(state_dir())
+
+    def test_undo_still_runs(self):
+        from aether import layouts
+        layouts.apply(self.ctx(), "developer", launch=False, sleep=lambda s: None)
+        res = layouts.undo(self.ctx())
+        self.assertIn("ok", res)
+

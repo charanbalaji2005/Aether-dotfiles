@@ -18,8 +18,19 @@ capabilities **statically**, at install time and again at load time:
 
 This blocks the obvious ways to read files, run programs or reach the network,
 but it is NOT a sandbox against a determined attacker (e.g. a widget can
-still spin the CPU or try to hide code in unusual syntax). Install widgets
-only from authors you trust. Process-level isolation is future work.
+still spin the CPU or try to hide code in unusual syntax). Therefore:
+
+  * third-party widgets are OFF by default (widgets.allowThirdParty);
+  * each one must be explicitly trusted (`aether widget trust`), and trust
+    is pinned to a SHA-256 digest of every file in the widget — if a file
+    changes, the widget stops loading until it is trusted again;
+  * installing does not trust; built-in widgets ship with the shell;
+  * safe mode and `aether recover` disable all third-party widgets.
+
+Process isolation was evaluated and not adopted: a widget process would need
+the Wayland socket to draw, and Hyprland grants every Wayland client
+screen-capture and other privileged protocols, so a separate process would
+not contain a hostile widget either (see SECURITY.md).
 """
 
 from __future__ import annotations
@@ -56,6 +67,9 @@ FORBIDDEN = [
     (re.compile(r"""["'][^"'\n]*\.\./"""), "paths outside the widget"),
     (re.compile(r"\bQuickshell\b"), "Quickshell APIs"),
     (re.compile(r"\beval\s*\(|\bFunction\s*\("), "eval"),
+    (re.compile(r"\bparent\s*\.\s*parent\b"), "reaching outside the widget through parent objects"),
+    (re.compile(r"\b(Window|ApplicationWindow)\s*\.|\bcontentItem\b|\bQt\s*\.\s*application\b"), "access to the shell's window or application"),
+    (re.compile(r"\.\s*source\s*=(?!=)"), "changing a source at runtime"),
 ]
 
 
@@ -199,8 +213,35 @@ def inspect(directory: str) -> Dict[str, Any]:
             "missingRequirements": missing, "path": directory}
 
 
+def digest(directory: str) -> str:
+    """SHA-256 over every file's relative path and content (sorted)."""
+    import hashlib
+    h = hashlib.sha256()
+    for root, dirs, names in os.walk(directory, followlinks=False):
+        dirs.sort()
+        for n in sorted(names):
+            full = os.path.join(root, n)
+            if os.path.islink(full):
+                continue
+            rel = os.path.relpath(full, directory).replace(os.sep, "/")
+            h.update(rel.encode("utf-8") + b"\0")
+            with open(full, "rb") as fh:
+                h.update(hashlib.sha256(fh.read()).digest())
+    return h.hexdigest()
+
+
+def _settings() -> Dict[str, Any]:
+    from . import config as config_mod
+    out = dict(config_mod.defaults()["widgets"])
+    data, _err = config_mod.load()
+    clean, _p = config_mod.validate({"widgets": (data or {}).get("widgets", {})})
+    out.update(clean.get("widgets", {}))
+    return out
+
+
 def listing() -> List[Dict[str, Any]]:
     out = []
+    settings = _settings()
     for source, base in (("builtin", builtin_dir()), ("user", user_dir())):
         try:
             names = sorted(os.listdir(base))
@@ -212,10 +253,19 @@ def listing() -> List[Dict[str, Any]]:
                 continue
             info = inspect(d)
             m = info["manifest"] or {}
-            out.append({"id": m.get("id", n), "name": m.get("name", n), "version": m.get("version"), "source": source,
+            wid = m.get("id", n)
+            d_now = digest(d) if source == "user" else None
+            pinned = next((t["digest"] for t in settings["trusted"] if t["id"] == wid), None) if source == "user" else None
+            trusted = source == "builtin" or (pinned is not None and pinned == d_now)
+            loadable = info["ok"] and (source == "builtin" or (settings["allowThirdParty"] and trusted))
+            why = "" if loadable else ("invalid" if not info["ok"] else
+                                       "third-party widgets are off (Settings → Widgets)" if not settings["allowThirdParty"] else
+                                       "changed since you trusted it — review and trust again" if pinned else "not trusted yet")
+            out.append({"id": wid, "name": m.get("name", n), "version": m.get("version"), "source": source,
                         "permissions": m.get("permissions", []), "size": m.get("size"), "entry": m.get("entry"),
                         "description": m.get("description", ""), "valid": info["ok"], "problems": info["problems"],
-                        "missingRequirements": info["missingRequirements"], "path": d})
+                        "missingRequirements": info["missingRequirements"], "path": d,
+                        "trusted": trusted, "digest": d_now, "loadable": loadable, "blockedReason": why})
     return out
 
 
@@ -268,3 +318,39 @@ def remove(widget_id: str) -> Dict[str, Any]:
         return {"ok": False, "problems": ["no user-installed widget %s (built-in widgets can't be removed)" % widget_id]}
     shutil.rmtree(dest)
     return {"ok": True}
+
+
+def _save_widgets(**changes: Any) -> None:
+    from . import config as config_mod
+    ok, problems = config_mod.set_keys({"widgets": changes})
+    if not ok:
+        raise ValueError("; ".join(problems))
+
+
+def trust(widget_id: str) -> Dict[str, Any]:
+    """Pin the widget's current files as trusted."""
+    w = next((x for x in listing() if x["id"] == widget_id and x["source"] == "user"), None)
+    if w is None:
+        return {"ok": False, "problems": ["no user-installed widget %s" % widget_id]}
+    if not w["valid"]:
+        return {"ok": False, "problems": ["%s does not pass validation: %s" % (widget_id, "; ".join(w["problems"][:3]))]}
+    trusted = [t for t in _settings()["trusted"] if t["id"] != widget_id] + [{"id": widget_id, "digest": w["digest"]}]
+    _save_widgets(trusted=trusted)
+    return {"ok": True, "id": widget_id, "digest": w["digest"], "permissions": w["permissions"]}
+
+
+def untrust(widget_id: str) -> Dict[str, Any]:
+    s = _settings()
+    _save_widgets(trusted=[t for t in s["trusted"] if t["id"] != widget_id],
+                  placed=[p for p in s["placed"] if p["widget"] != widget_id])
+    return {"ok": True}
+
+
+def disable_third_party() -> Dict[str, Any]:
+    """Recovery: stop loading every non-built-in widget (trust entries kept)."""
+    builtin = {w["id"] for w in listing() if w["source"] == "builtin"}
+    s = _settings()
+    removed = [p for p in s["placed"] if p["widget"] not in builtin]
+    _save_widgets(allowThirdParty=False, placed=[p for p in s["placed"] if p["widget"] in builtin])
+    return {"ok": True, "removed": len(removed)}
+

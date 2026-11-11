@@ -40,7 +40,7 @@ Item {
 
 **Permissions → `api` fields:** `time` → `api.time` (Date, updated every second) ·
 `system` → `api.system {cpu, mem, disk, cpuTemp, uptime}` · `gpu` → `api.gpu {available, name,
-usage, vramUsed, vramTotal, tempC, note}` · `media` → `api.media {available, title, artist,
+usage, vramUsed, vramTotal, tempC, note}` (numbers are -1 when unavailable, never 0) · `media` → `api.media {available, title, artist,
 playing, artUrl, playPause(), next(), previous()}` · `battery` → `api.battery {available, level,
 charging, timeText}` · `network` → `api.network {connected, name, down, up}` · always:
 `api.theme {accent, onAccent, text, textSecondary, textMuted, surface, border, danger, font,

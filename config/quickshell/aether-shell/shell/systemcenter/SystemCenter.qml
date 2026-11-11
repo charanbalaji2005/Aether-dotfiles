@@ -135,7 +135,7 @@ Scope {
                         label: "GPU"
                         available: g !== null && g !== undefined && g.usage !== null && g.usage !== undefined
                         value: available ? g.usage : 0
-                        detail: g && g.tempC !== null && g.tempC !== undefined ? Math.round(g.tempC) + " °C" : (g && g.usageNote ? "no telemetry" : "")
+                        detail: g && g.tempC !== null && g.tempC !== undefined ? Math.round(g.tempC) + " °C" : (g && g.note ? g.note : "")
                     }
                     RadialGauge { label: "Disk /"; value: SystemMonitorService.diskUsage
                                   detail: SystemMonitorService.diskUsedGb.toFixed(0) + " / " + SystemMonitorService.diskTotalGb.toFixed(0) + " GB" }

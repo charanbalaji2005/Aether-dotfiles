@@ -61,13 +61,28 @@ Scope {
             }
         }
     }
-    Component.onCompleted: markerCheck.running = true
+    Component.onCompleted: { markerCheck.running = true; hyprlockProbe.running = true; }
+    // Never leave a PAM conversation (and its helper process) running.
+    Component.onDestruction: if (pam.active) pam.abort()
     onLockedChanged: {
         markerWrite.command = root.locked ? ["touch", root.marker] : ["rm", "-f", root.marker];
         markerWrite.running = true;
     }
 
+    // Lock backend (Settings → Lock screen): "aether" is this file;
+    // "hyprlock" hands locking to hyprlock (a dedicated, widely used locker)
+    // when it is installed. Every lock path — keybind, idle, before sleep —
+    // goes through here, so the choice applies everywhere.
+    Process { id: hyprlockProbe; command: ["sh", "-c", "command -v hyprlock >/dev/null"]; onExited: function(code) { root.hyprlockInstalled = code === 0; } }
+    property bool hyprlockInstalled: false
+    readonly property bool useHyprlock: Config.lock.backend === "hyprlock" && hyprlockInstalled
+    Process { id: hyprlockProc; command: ["hyprlock"] }
+
     function requestLock() {
+        if (root.useHyprlock) {
+            if (!hyprlockProc.running) hyprlockProc.running = true;
+            return;
+        }
         root.statusText = "";
         root.failed = false;
         root.authenticating = false;
@@ -84,7 +99,14 @@ Scope {
         root.failed = false;
         root.statusText = "Verifying…";
         pamTimeout.restart();
-        pam.start();
+        // PamContext.start() returns false — without emitting completed() or
+        // error() — when the PAM configuration can't be loaded (e.g.
+        // /etc/pam.d/login missing). Treat that as a failure: stay locked,
+        // re-enable the field, say why.
+        if (!pam.start()) {
+            Logger.error("LockScreen", "PAM could not start (is /etc/pam.d/" + pam.config + " present?)");
+            root._reset("Authentication is unavailable — see aether logs --shell", true);
+        }
     }
     function _reset(message, isFailure) {
         pamTimeout.stop();

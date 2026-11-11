@@ -33,8 +33,10 @@ QtObject {
         if (!has("gpu")) return undefined;
         const g = SystemMonitorService.primaryGpu;
         if (!g) return { available: false, note: "No GPU telemetry" };
-        return { available: g.usage !== null && g.usage !== undefined, name: g.name, usage: g.usage === null ? -1 : g.usage,
-                 vramUsed: g.vramUsed || 0, vramTotal: g.vramTotal || 0, tempC: g.tempC || 0, note: g.note || "" };
+        // -1 means "not available" — never 0, which would read as a real value.
+        const num = function(v) { return v === null || v === undefined ? -1 : v; };
+        return { available: g.usage !== null && g.usage !== undefined, name: g.name, usage: num(g.usage),
+                 vramUsed: num(g.vramUsed), vramTotal: num(g.vramTotal), tempC: num(g.tempC), note: g.note || "" };
     }
 
     readonly property var media: has("media") ? {

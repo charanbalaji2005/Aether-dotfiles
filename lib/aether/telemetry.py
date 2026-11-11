@@ -125,6 +125,7 @@ class Sampler:
         self._nvml: Any = None
         self._nvml_failed = False
         self.nvml_factory = None  # tests inject a fake here
+        self.nvml_error: Optional[str] = None
         nv_desktop = [g for g in self.gpus if g["vendor"] == "nvidia" and g["driver"] == "nvidia" and not g["_runtimePm"]]
         if stream_nvidia and not processes and nv_desktop and ctx.is_live and ctx.which("nvidia-smi") and not self._nvml_usable():
             self._nv_stream = _NvidiaSmiStream(int(interval * 1000))
@@ -140,9 +141,12 @@ class Sampler:
             else:
                 from . import nvml as nvml_mod
                 self._nvml = nvml_mod.Nvml()
-        except Exception:  # noqa: BLE001 — NvmlUnavailable or a broken library
+        except Exception as exc:  # noqa: BLE001 — NvmlUnavailable or a broken library
+            # Remembered and shown in the GPU's note: e.g. "Driver/library
+            # version mismatch" after a driver update without a reboot.
             self._nvml_failed = True
             self._nvml = None
+            self.nvml_error = str(exc) or exc.__class__.__name__
         return self._nvml is not None
 
     def _name_processes(self, procs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -355,6 +359,10 @@ class Sampler:
                 row = parse_nvidia_smi_line(res.out.splitlines()[0]) if res.ok and res.out.strip() else None
             else:
                 out["note"] = "nvidia-smi not installed (xorg-x11-drv-nvidia-cuda)"
+            if row is None and self.nvml_error and not out.get("note"):
+                out["note"] = "NVML: %s" % self.nvml_error
+            elif row is None and self.nvml_error:
+                out["note"] = "%s; NVML: %s" % (out["note"], self.nvml_error)
             if row:
                 for k in ("usage", "tempC", "vramUsed", "vramTotal", "powerW", "clockMhz"):
                     out[k] = row.get(k)
@@ -445,6 +453,11 @@ class Sampler:
     def close(self) -> None:
         if self._nv_stream:
             self._nv_stream.stop()
+        if self._nvml is not None:
+            try:
+                self._nvml.close()
+            finally:
+                self._nvml = None
 
 
 def stream(ctx: Context, interval: float, processes: bool, count: Optional[int] = None) -> int:

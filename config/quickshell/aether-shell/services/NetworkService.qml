@@ -90,11 +90,27 @@ Singleton {
         }
     }
 
-    Timer {
-        interval: 5000
+    // Event-driven: `nmcli monitor` prints a line whenever NetworkManager's
+    // state changes (connect, disconnect, VPN, radio, device). Each burst of
+    // lines triggers one debounced refresh. Before this, four nmcli processes
+    // ran every 5 s for the whole session. If the monitor isn't running
+    // (nmcli missing or it exited), a slow 60 s poll keeps the state honest.
+    Process {
+        id: monitorProc
+        command: ["nmcli", "monitor"]
         running: true
+        stdout: SplitParser { onRead: function(_line) { refreshDebounce.restart(); } }
+        onExited: function(code) {
+            Logger.warn("NetworkService", "nmcli monitor exited (" + code + "); falling back to polling every 60 s");
+            monitorRestart.restart();
+        }
+    }
+    Timer { id: monitorRestart; interval: 30000; onTriggered: monitorProc.running = true }
+    Timer { id: refreshDebounce; interval: 400; onTriggered: root.refresh() }
+    Timer {
+        interval: 60000
+        running: !monitorProc.running
         repeat: true
-        triggeredOnStart: true
         onTriggered: root.refresh()
     }
 

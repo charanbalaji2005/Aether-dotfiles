@@ -699,6 +699,14 @@ def cmd_recover(ctx: Context, args) -> int:
         fh.write("enabled by `aether recover` %s\n" % time.strftime("%Y-%m-%d %H:%M:%S"))
     steps.append("Safe mode enabled (effects, video wallpaper and automation off).")
 
+    try:
+        from . import widgets as widgets_mod
+        w = widgets_mod.disable_third_party()
+        if w["removed"]:
+            steps.append("Third-party widgets disabled (%d removed from the desktop)." % w["removed"])
+    except (OSError, ValueError) as exc:
+        steps.append("Couldn't change widget settings: %s" % exc)
+
     created = hyprconf.ensure_defaults()
     if created:
         steps.append("Recreated missing Hyprland fragment(s): %s" % ", ".join(os.path.basename(c) for c in created))

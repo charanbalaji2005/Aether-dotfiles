@@ -1,4 +1,3 @@
-#!/usr/bin/bash
 # Shared helpers for the AetherOS install scripts. Sourced, never executed.
 #
 #   aether_targets      every path under $HOME that AetherOS links/owns

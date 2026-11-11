@@ -15,7 +15,7 @@ ColumnLayout {
     Component.onCompleted: CliService.run("render", ["render", "--json"], function(ok, d) { root.render = d; })
 
     Repeater {
-        model: SystemMonitorService.gpus
+        model: SystemMonitorService.gpusMerged
         delegate: MotionCard {
             required property var modelData
             required property int index
@@ -32,7 +32,7 @@ ColumnLayout {
                         : modelData.usage === null || modelData.usage === undefined ? (modelData.note || "No counters available.")
                         : Math.round(modelData.usage * 100) + "% busy"
                           + (modelData.vramTotal ? "  ·  VRAM " + (modelData.vramUsed / 1073741824).toFixed(1) + " / " + (modelData.vramTotal / 1073741824).toFixed(1) + " GiB" : "")
-                          + (modelData.tempC ? "  ·  " + Math.round(modelData.tempC) + " °C" : "")
+                          + (modelData.tempC !== null && modelData.tempC !== undefined ? "  ·  " + Math.round(modelData.tempC) + " °C" : "")
                           + (modelData.powerW ? "  ·  " + modelData.powerW + " W" + (modelData.powerLimitW ? " of " + modelData.powerLimitW : "") : "")
                     color: Colors.textSecondary; font.family: Typography.family; font.pixelSize: Typography.sizeSm
                 }

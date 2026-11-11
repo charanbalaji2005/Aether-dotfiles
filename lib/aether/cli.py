@@ -756,8 +756,9 @@ def cmd_diagnostics(ctx: Context, args) -> int:
             fh.write("\n".join(lines) + "\n")
         out.write()
         out.write("  Report saved to %s" % path)
-    except OSError:
-        pass
+    except OSError as exc:
+        out.write()
+        out.write("  Couldn't save the report: %s" % exc)
     return 1 if fails or (doctor_rc not in (None, 0)) else 0
 
 

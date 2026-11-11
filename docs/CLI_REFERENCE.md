@@ -1,6 +1,6 @@
 # `aether` command reference
 
-Generated from the CLI's own argument parser by `tools/gen_cli_reference.py` (AetherOS 1.0.0-rc.1).
+Generated from the CLI's own argument parser by `tools/gen_cli_reference.py` (AetherOS 1.0.0-rc.2).
 Every command supports `--json` where it reports data, never needs root, and logs to
 `~/.local/state/aether/aether.log` (secrets redacted).
 
@@ -464,6 +464,9 @@ aether widget [-h] [--json] <subcommand> ...
 - `aether widget list` — list [-h] [--json]
 - `aether widget inspect` — inspect [-h] [--json] path
 - `aether widget install` — a widget directory or .zip (validated; asks to confirm its permissions)
+- `aether widget trust` — trust a user-installed widget (pinned to its current files)
+- `aether widget untrust` — untrust [-h] [--json] id
+- `aether widget disable-third-party` — recovery: stop loading all non-built-in widgets
 - `aether widget remove` — remove [-h] [--json] id
 
 ## aether workspace

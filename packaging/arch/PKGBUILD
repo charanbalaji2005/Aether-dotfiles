@@ -1,29 +1,46 @@
-# Maintainer: Charan Balaji <noreply@example.invalid>
+# Maintainer: AetherOS Maintainer <maintainer@REPLACE.ME>
 #
-# NOT BUILD-TESTED — there's no makepkg/pacman in the environment this was
-# written in, so this hasn't gone through an actual `makepkg` run the way
-# the RPM spec was actually built and lint-fixed with rpmbuild/rpmlint (see
-# packaging/rpm/ and the top-level PROGRESS.md for that distinction). The
-# syntax follows standard PKGBUILD conventions; treat it as a solid draft,
-# not a verified package.
+# STATUS: the package() function is exercised by tests/packaging/test_packages.sh
+# (run with bash against the real release tarball); a real `makepkg`/`namcap`
+# run on Arch has NOT been performed — see TEST_REPORT.md. AetherOS targets
+# Fedora; this PKGBUILD is community-grade.
+#
+# sha256sums is filled from the exact release tarball by
+# tools/update-pkgbuild.sh (the release workflow does this and publishes the
+# result). The placeholder below makes makepkg fail loudly — it never skips
+# verification.
 
 pkgname=aetheros-dotfiles
-pkgver=1.0.0rc1
+_upstreamver=1.0.0-rc.2
+pkgver=1.0.0rc2
 pkgrel=1
-pkgdesc="AetherOS Hyprland dotfiles and Quickshell desktop shell"
+pkgdesc="AetherOS Hyprland desktop: Quickshell shell, configs and tools"
 arch=('any')
 url="https://github.com/OWNER/aetheros-dotfiles"
 license=('GPL-3.0-or-later')
-depends=('hyprland' 'kitty' 'zsh' 'python')
-optdepends=('pciutils: GPU model names' 'vulkan-tools: aether graphics detect' 'libva-utils: VA-API checks' 'hyprsunset: night light' 'power-profiles-daemon: power modes' 'imagemagick: accent from wallpaper')
-source=("$pkgname-$pkgver.tar.gz")
-sha256sums=('SKIP')  # replace with a real checksum once this has an actual release tarball
+depends=('hyprland' 'quickshell' 'python' 'kitty' 'zsh' 'bash')
+optdepends=('hypridle: idle locking and dimming'
+            'hyprlock: alternative lock screen'
+            'pciutils: GPU model names'
+            'vulkan-tools: aether render --probe'
+            'libva-utils: VA-API checks'
+            'hyprsunset: night light'
+            'power-profiles-daemon: power modes'
+            'imagemagick: accent from wallpaper'
+            'libsecret: assistant API keys in the keyring'
+            'cliphist: clipboard history'
+            'wf-recorder: screen recording')
+source=("$url/releases/download/v$_upstreamver/$pkgname-$_upstreamver.tar.gz")
+sha256sums=('FILLED_BY_tools/update-pkgbuild.sh')
 
 package() {
+    local src="$srcdir/$pkgname-$_upstreamver"
     install -dm755 "$pkgdir/usr/share/$pkgname"
-    cp -a "$srcdir/$pkgname/." "$pkgdir/usr/share/$pkgname/"
-    rm -rf "$pkgdir/usr/share/$pkgname/.git" "$pkgdir/usr/share/$pkgname/.github"
+    cp -a "$src/." "$pkgdir/usr/share/$pkgname/"
+    rm -rf "$pkgdir/usr/share/$pkgname/.github" "$pkgdir/usr/share/$pkgname/tests" "$pkgdir/usr/share/$pkgname/packaging"
+    rm -f "$pkgdir/usr/share/$pkgname/.editorconfig" "$pkgdir/usr/share/$pkgname/.gitattributes" "$pkgdir/usr/share/$pkgname/.shellcheckrc"
     find "$pkgdir/usr/share/$pkgname" -name ".gitignore" -delete
+    chmod 0755 "$pkgdir/usr/share/$pkgname/install.sh" "$pkgdir/usr/share/$pkgname"/scripts/*.sh "$pkgdir/usr/share/$pkgname"/scripts/bin/*
 
     install -dm755 "$pkgdir/usr/bin"
     ln -s "/usr/share/$pkgname/scripts/setup-symlinks.sh" "$pkgdir/usr/bin/aetheros-dotfiles-setup"
@@ -32,5 +49,5 @@ package() {
     ln -s "/usr/share/$pkgname/scripts/bin/aether-screenshot" "$pkgdir/usr/bin/aether-screenshot"
     ln -s "/usr/share/$pkgname/scripts/bin/aether-wallpaper" "$pkgdir/usr/bin/aether-wallpaper"
 
-    install -Dm644 "$srcdir/$pkgname/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm644 "$src/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

@@ -1,40 +1,77 @@
 name: Release
 
-# Push a tag like v1.0.0-rc.1 or v1.0.0. The full test suite runs first; the
-# release gets a source tarball with a SHA-256 checksum and the matching
-# CHANGELOG section. Pre-release tags (containing "-") are marked as such.
+# Push a tag like v1.0.0-rc.2. Every required check runs first (lint, all
+# tests, Fedora suite + RPM build, strict release metadata). Any failure
+# stops the release. Tags containing "-" are published as pre-releases.
+# Hardware validation is not something CI can do: it is tracked in
+# TEST_REPORT.md and docs/HARDWARE.md and must be done before 1.0.0.
 on:
   push:
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  lint:
+    uses: ./.github/workflows/lint.yml
+
   test:
     uses: ./.github/workflows/tests.yml
 
-  release:
-    needs: test
+  release-checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - name: Version matches the tag
+      - name: Tag matches the version everywhere
         run: |
           tag="${GITHUB_REF_NAME#v}"
           ver="$(python3 -c 'import sys; sys.path.insert(0, "lib"); import aether; print(aether.__version__)')"
           [ "$tag" = "$ver" ] || { echo "::error::tag $tag != lib/aether __version__ $ver"; exit 1; }
-      - name: Build tarball
-        run: bash packaging/tarball/build-tarball.sh "${GITHUB_REF_NAME#v}"
+      - name: Strict release metadata (no publisher placeholders, consistent versions, links)
+        run: bash tests/scripts/test_release_metadata.sh --strict
+
+  build:
+    needs: [lint, test, release-checks]
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - run: dnf -y install git python3 rpm-build rpmlint tar gzip
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Source tarball (reproducible) + checksum
+        run: bash packaging/tarball/build-tarball.sh
+      - name: PKGBUILD with the tarball's checksum
+        run: bash tools/update-pkgbuild.sh "dist/aetheros-dotfiles-${GITHUB_REF_NAME#v}.tar.gz" dist/PKGBUILD
+      - name: RPM and SRPM
+        run: |
+          top="$PWD/rpmbuild"; mkdir -p "$top/SOURCES" "$top/SPECS"
+          cp dist/*.tar.gz "$top/SOURCES/"; cp packaging/rpm/aetheros-dotfiles.spec "$top/SPECS/"
+          rpmbuild --define "_topdir $top" -ba "$top/SPECS/aetheros-dotfiles.spec"
+          cp "$top"/RPMS/noarch/*.rpm "$top"/SRPMS/*.src.rpm dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: release-artifacts, path: dist }
       - name: Release notes from CHANGELOG.md
         run: |
           ver="${GITHUB_REF_NAME#v}"
           awk -v v="## $ver" 'index($0, v) == 1 {f=1; next} /^## / && f {exit} f' CHANGELOG.md > notes.md
-          [ -s notes.md ] || echo "See CHANGELOG.md" > notes.md
+          [ -s notes.md ] || { echo "::error::no CHANGELOG section for $ver"; exit 1; }
       - name: Create release
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
           flags=""
           case "$GITHUB_REF_NAME" in *-*) flags="--prerelease" ;; esac
-          gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/*.sha256 --title "AetherOS ${GITHUB_REF_NAME#v}" --notes-file notes.md $flags
+          gh release create "$GITHUB_REF_NAME" dist/* --title "AetherOS ${GITHUB_REF_NAME#v}" --notes-file notes.md $flags

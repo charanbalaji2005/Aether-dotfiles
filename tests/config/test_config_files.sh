@@ -33,16 +33,7 @@ for unit in "$REPO_DIR"/system/systemd/*.service; do
     if awk '/^\[Service\]/{s=1;next} /^\[/{s=0} s && /^StartLimit/' "$unit" | grep -q .; then
         fail "$name sets StartLimit* in [Service] (must be in [Unit])"
     fi
-    if command -v systemd-analyze >/dev/null 2>&1; then
-        if systemd-analyze --user verify "$unit" >/dev/null 2>&1; then
-            pass "$name passes systemd-analyze verify"
-        else
-            # verify also fails when ExecStart binaries aren't installed (CI); show why.
-            echo "INFO: systemd-analyze verify $name reported:"; systemd-analyze --user verify "$unit" 2>&1 | sed 's/^/    /' | head -5
-        fi
-    else
-        pass "$name structurally valid (systemd-analyze not available)"
-    fi
+    pass "$name structurally valid (systemd-analyze verification: below)"
 done
 if grep -q '%h/.local/bin' "$REPO_DIR/system/systemd/aether-shell.service"; then
     pass "aether-shell.service puts ~/.local/bin on PATH (helpers resolvable under systemd)"
@@ -90,6 +81,30 @@ if missing or unknown_sections:
     sys.exit(1)
 print("PASS: all %d Config.<section>.<key> references are declared in the schema" % len(used))
 PYEOF
+
+# ── systemd units pass systemd-analyze verify (system mode: a user manager
+#    isn't available in CI containers; user-only semantics like %h are
+#    exercised on real hardware). A deliberately broken unit must fail, so a
+#    silently non-working verifier can't pass this. ─────────────────────
+if command -v systemd-analyze >/dev/null 2>&1; then
+    vt="$(mktemp -d)"
+    printf '[Service]\nExecStart=relative/path\n' > "$vt/aether-broken-probe.service"
+    if systemd-analyze verify "$vt/aether-broken-probe.service" >/dev/null 2>&1; then
+        echo "NOTE: systemd-analyze can't verify units here (accepted a broken unit); not run"
+    else
+        cp "$REPO_DIR"/system/systemd/*.service "$vt/"
+        rm -f "$vt/aether-broken-probe.service"
+        unit_ok=1
+        for u in "$vt"/*.service; do
+            out="$(systemd-analyze verify "$u" 2>&1)"
+            if [ -n "$out" ]; then echo "$out"; unit_ok=0; fi
+        done
+        if [ "$unit_ok" -eq 1 ]; then pass "systemd units verify cleanly (systemd-analyze, system mode)"; else fail "systemd-analyze reported problems"; fi
+    fi
+    rm -rf "$vt"
+else
+    echo "NOTE: systemd-analyze not installed; unit verification not run"
+fi
 
 # ── Generated files are current (schema data, CLI reference) ──────────
 if "$PY" "$REPO_DIR/tools/gen_schema.py" --check && "$PY" "$REPO_DIR/tools/gen_cli_reference.py" --check; then

@@ -27,11 +27,15 @@
 
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 # shellcheck source=SCRIPTDIR/scripts/lib/common.sh
 . "$REPO_DIR/scripts/lib/common.sh"
 
 MIN_FEDORA=41
+# Oldest Quickshell whose API covers everything the shell uses — verified by
+# tests/shell/test_quickshell_api.sh against Quickshell's source (0.1.x lacks
+# Quickshell.execDetached and Hyprland.toplevels).
+MIN_QUICKSHELL="0.2.0"
 ACTION=""
 MODE="recommended"
 ASSUME_YES=0
@@ -86,6 +90,19 @@ info()  { printf '  %s      %s%s\n' "$D" "$1" "$N"; }
 WARNINGS=0
 BLOCKERS=0
 
+# try_step <description> <command…>: run a non-fatal step. A failure is never
+# hidden: it is reported as a warning (with the exit code) and counted in
+# the final summary.
+try_step() {
+    local what="$1"; shift
+    local rc=0
+    "$@" || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        warn "$what failed (exit $rc) — the install continues; see the log above"
+    fi
+    return 0
+}
+
 confirm() {
     [ "$ASSUME_YES" -eq 1 ] && return 0
     [ -t 0 ] || { echo "  $1 -> skipped (not a terminal; pass --yes)"; return 1; }
@@ -115,11 +132,12 @@ aether() { bash "$REPO_DIR/scripts/bin/aether" "$@"; }
 state_done() { [ -f "$STATE_FILE" ] && grep -qx "done=$1" "$STATE_FILE"; }
 state_mark() { [ "$DRY" -eq 1 ] || { mkdir -p "$STATE_DIR"; echo "done=$1" >> "$STATE_FILE"; }; }
 state_set()  { [ "$DRY" -eq 1 ] || { mkdir -p "$STATE_DIR"; echo "$1=$2" >> "$STATE_FILE"; }; }
+# A missing key is a normal answer (empty), not an error.
 state_get()  { [ -f "$STATE_FILE" ] && grep "^$1=" "$STATE_FILE" | tail -1 | cut -d= -f2- || true; }
 
 start_log() {
     mkdir -p "$LOG_DIR"
-    chmod 700 "$STATE_DIR" 2>/dev/null || true
+    chmod 700 "$STATE_DIR" 2>/dev/null || echo "WARNING: couldn't restrict permissions on $STATE_DIR" >&2
     LOG_FILE="$LOG_DIR/install-$(date +%Y%m%d-%H%M%S).log"
     # Keep the ten most recent logs.
     find "$LOG_DIR" -maxdepth 1 -name 'install-*.log' -printf '%T@ %p\n' 2>/dev/null | sort -rn | awk 'NR>10 {print $2}' | xargs -r rm -f
@@ -167,6 +185,7 @@ package_lists() {
 # Sort the wanted packages into installed / available / unavailable by asking
 # rpm and the *enabled* repositories — no package name is assumed to exist.
 PKG_INSTALLED=(); PKG_AVAILABLE=(); PKG_MISSING=()
+REPOQUERY_FAILED=0
 classify_packages() {
     local wanted=() list pkg avail
     while IFS= read -r list; do
@@ -185,7 +204,14 @@ classify_packages() {
     [ ${#pending[@]} -eq 0 ] && return 0
     if [ -z "$DNF" ]; then PKG_MISSING=("${pending[@]}"); return 0; fi
     # One repoquery for everything. --qf needs an explicit newline on dnf5.
-    avail="$("$DNF" -q repoquery --available --qf '%{name}\n' "${pending[@]}" 2>/dev/null | sed 's/\\n$//' | sort -u || true)"
+    local rq_rc=0
+    avail="$("$DNF" -q repoquery --available --qf '%{name}\n' "${pending[@]}" 2>/dev/null)" || rq_rc=$?
+    if [ "$rq_rc" -ne 0 ]; then
+        # Don't report every package as "not available" when the query itself failed.
+        warn "dnf repoquery failed (exit $rq_rc; offline or repository error) — package availability is unknown"
+        REPOQUERY_FAILED=1
+    fi
+    avail="$(printf '%s\n' "$avail" | sed 's/\\n$//' | sort -u)"
     for pkg in "${pending[@]}"; do
         if grep -qx "$pkg" <<< "$avail"; then PKG_AVAILABLE+=("$pkg"); else PKG_MISSING+=("$pkg"); fi
     done
@@ -222,6 +248,17 @@ preflight() {
         if [ -n "$DNF" ]; then ok "Package manager: $DNF$(dnf_is_v5 && echo ' (DNF5)' || echo ' (DNF4)')"; else bad "dnf not found."; fi
         if command -v sudo >/dev/null 2>&1; then ok "sudo available (used only for package installation)"; else bad "sudo not found: packages can't be installed."; fi
     fi
+    if command -v qs >/dev/null 2>&1 || command -v quickshell >/dev/null 2>&1; then
+        local qsv
+        qsv="$( (qs --version 2>/dev/null || quickshell --version 2>/dev/null) | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+        if [ -z "$qsv" ]; then
+            warn "Quickshell is installed but its version couldn't be read; AetherOS needs $MIN_QUICKSHELL or newer."
+        elif [ "$(printf '%s\n%s\n' "$MIN_QUICKSHELL" "$qsv" | sort -V | head -1)" != "$MIN_QUICKSHELL" ]; then
+            bad "Quickshell $qsv is older than $MIN_QUICKSHELL (the shell uses APIs added in $MIN_QUICKSHELL)."
+        else
+            ok "Quickshell $qsv (>= $MIN_QUICKSHELL)"
+        fi
+    fi
     for tool in git python3; do
         if command -v "$tool" >/dev/null 2>&1; then ok "$tool found"; else warn "$tool not found (it is in the package list)"; fi
     done
@@ -239,6 +276,7 @@ preflight() {
     fi
 
     local dm=""
+    # No display-manager link is a normal answer (TTY login), not an error.
     dm="$(basename "$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null || true)" .service)"
     if [ -n "$dm" ] && [ "$dm" != "display-manager" ]; then
         ok "Display manager: $dm (kept; pick 'Hyprland' in its session menu)"
@@ -281,6 +319,10 @@ plan_packages() {
         info "To install (${#PKG_AVAILABLE[@]}): ${PKG_AVAILABLE[*]}"
     fi
     local pkg copr
+    if [ "$REPOQUERY_FAILED" -eq 1 ]; then
+        info "Availability unknown for: ${PKG_MISSING[*]} (repository query failed); dnf will report anything missing at install time."
+        return 0
+    fi
     for pkg in "${PKG_MISSING[@]}"; do
         copr="$(copr_for "$pkg")"
         if [ -n "$copr" ]; then
@@ -298,6 +340,11 @@ install_packages() {
     # one explicit question each.
     local pkg copr enabled_any=0
     declare -A asked=()
+    if [ "$REPOQUERY_FAILED" -eq 1 ]; then
+        # Unknown availability: don't offer third-party repositories on a guess.
+        PKG_AVAILABLE+=("${PKG_MISSING[@]}")
+        PKG_MISSING=()
+    fi
     for pkg in "${PKG_MISSING[@]}"; do
         copr="$(copr_for "$pkg")"
         [ -n "$copr" ] || continue
@@ -398,12 +445,12 @@ do_configure() {
         return 0
     fi
     aether config migrate || warn "settings migration reported a problem (aether config validate)"
-    aether hyprland compat || true
-    aether graphics configure || true
-    aether theme apply >/dev/null || true
-    aether idle apply >/dev/null || true
+    try_step "aether hyprland compat" aether hyprland compat
+    try_step "aether graphics configure" aether graphics configure
+    try_step "aether theme apply" aether theme apply
+    try_step "aether idle apply" aether idle apply
     bash "$REPO_DIR/scripts/build-shaders.sh" || warn "shaders not compiled locally: bundled ones are used, with a non-shader fallback"
-    aether hardware || true
+    try_step "aether hardware" aether hardware
     # NVIDIA: only ever a *plan* here; the installer for it asks separately.
     if [ "$OS_ID" = "fedora" ] && grep -qs "^PCI_ID=10DE:" /sys/bus/pci/devices/*/uevent && [ ! -d /sys/module/nvidia ]; then
         echo
@@ -421,8 +468,11 @@ do_services() {
     done
     if [ "$DRY" -eq 1 ]; then info "would enable: ${units[*]}"; return 0; fi
     if systemctl --user daemon-reload 2>/dev/null; then
-        systemctl --user enable "${units[@]}" 2>/dev/null || true
-        ok "enabled: ${units[*]}"
+        if systemctl --user enable "${units[@]}"; then
+            ok "enabled: ${units[*]}"
+        else
+            warn "systemctl --user enable failed for: ${units[*]} — enable them after logging in: systemctl --user enable ${units[*]}"
+        fi
     else
         info "No systemd user session right now; Hyprland starts the services on first login."
     fi
@@ -431,10 +481,10 @@ do_services() {
 do_validate() {
     step "Validation"
     if [ "$DRY" -eq 1 ]; then info "would run: scripts/doctor.sh, aether hyprland, aether config validate"; return 0; fi
-    bash "$REPO_DIR/scripts/doctor.sh" || true
+    try_step "scripts/doctor.sh" bash "$REPO_DIR/scripts/doctor.sh"
     if command -v python3 >/dev/null 2>&1; then
-        aether hyprland || true
-        aether config validate || true
+        try_step "Hyprland config validation (aether hyprland)" aether hyprland
+        try_step "settings validation (aether config validate)" aether config validate
     fi
 }
 
@@ -478,7 +528,11 @@ do_install() {
     if [ "$DRY" -eq 1 ]; then
         echo "${B}Dry run complete: nothing was changed.${N}"
     else
-        echo "${B}AetherOS is installed.${N}  Log: $LOG_FILE"
+        if [ "$WARNINGS" -gt 0 ]; then
+            echo "${Y}AetherOS is installed, with $WARNINGS warning(s) — review them above.${N}  Log: $LOG_FILE"
+        else
+            echo "${B}AetherOS is installed.${N}  Log: $LOG_FILE"
+        fi
         echo "  Log out, choose the Hyprland session at your display manager, and log in."
         echo "  If the shell misbehaves:        aether recover"
         echo "  If Hyprland won't start (TTY):  Hyprland -c ~/.config/hypr/recovery.conf"
@@ -492,7 +546,9 @@ do_update() {
         if [ -n "$(git -C "$REPO_DIR" status --porcelain --untracked-files=no 2>/dev/null)" ]; then
             warn "Local changes in $REPO_DIR (your live configs are links into it). Pulling with --ff-only."
         fi
-        aether snapshot create --label pre-update >/dev/null 2>&1 || true
+        if ! aether snapshot create --label pre-update >/dev/null 2>&1; then
+            warn "couldn't snapshot settings before updating (aether snapshot create) — continuing"
+        fi
         git -C "$REPO_DIR" pull --ff-only || { bad "git pull failed; resolve it (git status) and re-run."; exit 1; }
     else
         info "Not a git checkout: skipping pull."

@@ -611,3 +611,68 @@ class ShellContracts(unittest.TestCase):
         svc = slurp(os.path.join(self.SHELL, "services/AutomationService.qml"))
         body = svc[svc.index("function _runAction"):]
         self.assertEqual(sorted(set(re.findall(r'case "([a-z-]+)":', body))), sorted(automation.ACTIONS))
+
+
+class WidgetTrust(IsolatedHome):
+    """rc.2 trust model: off by default, explicit trust pinned to a digest."""
+
+    def setUp(self):
+        super().setUp()
+        os.environ["XDG_DATA_HOME"] = os.path.join(self.home, ".local/share")
+        self.src = os.path.join(self.home, "src")
+        os.makedirs(self.src)
+        self.assertTrue(widgets.install(make_widget(self.src, "hello"))["ok"])
+
+    def state(self):
+        return next(w for w in widgets.listing() if w["id"] == "hello")
+
+    def test_third_party_off_by_default_and_install_does_not_trust(self):
+        st = self.state()
+        self.assertFalse(st["trusted"])
+        self.assertFalse(st["loadable"])
+        self.assertIn("off", st["blockedReason"])
+        self.assertTrue(all(w["loadable"] for w in widgets.listing() if w["source"] == "builtin"))
+
+    def test_needs_both_allow_and_trust(self):
+        self.write_config({"widgets": {"allowThirdParty": True}})
+        self.assertEqual(self.state()["blockedReason"], "not trusted yet")
+        self.assertTrue(widgets.trust("hello")["ok"])
+        self.assertTrue(self.state()["loadable"])
+
+    def test_changing_a_trusted_widget_revokes_it(self):
+        self.write_config({"widgets": {"allowThirdParty": True}})
+        widgets.trust("hello")
+        qml = os.path.join(widgets.user_dir(), "hello", "Widget.qml")
+        with open(qml, "a") as fh:
+            fh.write("// changed\n")
+        st = self.state()
+        self.assertFalse(st["loadable"])
+        self.assertIn("changed since you trusted it", st["blockedReason"])
+
+    def test_disable_third_party_for_recovery(self):
+        self.write_config({"widgets": {"allowThirdParty": True, "placed": [
+            {"id": "a", "widget": "hello", "x": 0, "y": 0}, {"id": "b", "widget": "clock", "x": 0, "y": 0}]}})
+        widgets.trust("hello")
+        res = widgets.disable_third_party()
+        self.assertEqual(res["removed"], 1)
+        cfg = config.load()[0]["widgets"]
+        self.assertFalse(cfg["allowThirdParty"])
+        self.assertEqual([p["widget"] for p in cfg["placed"]], ["clock"])
+        self.assertFalse(self.state()["loadable"])
+
+    def test_untrust_removes_placements(self):
+        self.write_config({"widgets": {"allowThirdParty": True, "placed": [{"id": "a", "widget": "hello", "x": 0, "y": 0}]}})
+        widgets.trust("hello")
+        widgets.untrust("hello")
+        self.assertFalse(self.state()["trusted"])
+        self.assertEqual(config.load()[0]["widgets"]["placed"], [])
+
+    def test_stricter_scanner_rules(self):
+        for name, qml in {"pp": "import QtQuick\nItem { x: parent.parent.width }",
+                          "win": "import QtQuick\nItem { x: Window.width }",
+                          "src": "import QtQuick\nLoader { Component.onCompleted: item.source = 'w.qml' }"}.items():
+            self.assertTrue(widgets.scan(make_widget(self.src, "s-" + name, qml)), name)
+
+    def test_invalid_digest_rejected_by_schema(self):
+        _c, problems = config.validate({"widgets": {"trusted": [{"id": "hello", "digest": "abc"}]}})
+        self.assertTrue(problems)

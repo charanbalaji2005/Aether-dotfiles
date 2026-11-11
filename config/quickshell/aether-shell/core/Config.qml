@@ -226,6 +226,7 @@ Singleton {
 
             property JsonObject lock: JsonObject {
                 property string clockStyle: "digital" // "digital" | "large" | "split" | "analog"
+                property string backend: "aether"     // "aether" | "hyprlock" (used only when hyprlock is installed)
                 property bool showDate: true
                 property bool showBattery: true
                 property bool showMedia: true
@@ -315,6 +316,8 @@ Singleton {
             property JsonObject widgets: JsonObject {
                 property bool enabled: false
                 property var placed: []               // [{id, widget, screen, x, y, w, h}] validated by `aether widget`
+                property bool allowThirdParty: false  // third-party widgets run inside the shell: off unless you opt in
+                property var trusted: []              // [{id, digest}] — `aether widget trust`; a changed widget is untrusted again
                 property int grid: 16
             }
 

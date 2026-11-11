@@ -32,3 +32,4 @@ sound-theme-freedesktop
 libcanberra-gtk3
 # Launcher file search ("/query"); falls back to a bounded scan without it
 plocate
+hyprlock                # alternative lock screen (Settings → Lock screen → hyprlock)

@@ -131,6 +131,9 @@ STRUCTURED_LISTS = {
         "y": (lambda x: isinstance(x, (int, float)) and not isinstance(x, bool) and 0 <= x <= 16384, True),
         "w": (lambda x: isinstance(x, (int, float)) and not isinstance(x, bool) and 40 <= x <= 4096, False),
         "h": (lambda x: isinstance(x, (int, float)) and not isinstance(x, bool) and 40 <= x <= 4096, False)}),
+    ("widgets", "trusted"): lambda w, v: _check_objects(w, v, {
+        "id": (lambda x: isinstance(x, str) and bool(re.match(r"^[a-z0-9][a-z0-9.-]{0,63}$", x)), True),
+        "digest": (lambda x: isinstance(x, str) and bool(re.match(r"^[0-9a-f]{64}$", x)), True)}),
     ("launcher", "history"): lambda w, v: (([q for q in v if isinstance(q, str) and 0 < len(q) <= 200][:100], None)
                                            if isinstance(v, list) else ([], "%s: expected a list" % w)),
     ("privacy", "clipboardExcludeApps"): lambda w, v: (([a for a in v if isinstance(a, str) and APP_ID_RE.match(a)][:64], None)

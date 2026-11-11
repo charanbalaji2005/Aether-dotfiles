@@ -5,9 +5,11 @@ Quickshell/QML with its own animation and graphics engine, a hardware-aware back
 optional local-first assistant, and an installer that can check, preview, install, update,
 uninstall and roll back.
 
-> **Status: 1.0.0-rc.1 (release candidate).** Everything below is implemented and covered by
-> the automated test suites. It has **not yet been validated on physical hardware** or a live
-> session — [docs/HARDWARE.md](docs/HARDWARE.md) has the checklist that gates 1.0.0. Keep a TTY
+> **Status: 1.0.0-rc.2 — ready for private testing.** Implemented and covered by automated
+> tests (incl. Quickshell API conformance against 0.2.0–0.3.2 and a real RPM build). **Not yet
+> runtime- or hardware-verified**: PAM unlock, NVIDIA/RTX 4050 behaviour, suspend/resume and
+> multi-monitor need the checklist in [docs/HARDWARE.md](docs/HARDWARE.md). Third-party widgets
+> are off by default and are not sandboxed ([SECURITY.md](SECURITY.md)). Keep a TTY
 > (Ctrl+Alt+F3) handy for the first login and read [RECOVERY.md](RECOVERY.md).
 
 ## Install (Fedora 41+)

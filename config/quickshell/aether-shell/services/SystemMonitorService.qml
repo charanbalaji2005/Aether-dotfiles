@@ -50,7 +50,8 @@ Singleton {
     property var gpuDetail: []
     // Emitted after each main telemetry sample (PerformanceService's GPU-pressure policy listens).
     signal sampled()
-    readonly property var primaryGpu: _pickGpu(gpus)
+    property bool _badLineLogged: false
+    readonly property var primaryGpu: _pickGpu(gpusMerged)
     property var processes: []                // filled only while `wantProcesses`
 
     // History for graphs (oldest first), one sample per interval.
@@ -71,6 +72,17 @@ Singleton {
 
     readonly property int interval: Math.max(500, Config.performance.telemetryInterval || 2000)
     readonly property real effectiveIntervalSeconds: (ShellState.onBattery && Config.performance.pauseOnBattery ? interval * 2 : interval) / 1000.0
+
+    // Main-stream GPUs overlaid with detail-stream counters (present while a
+    // detail view is open) — that is how an awake hybrid dGPU's NVML values
+    // reach the dashboard. Matched by PCI slot.
+    readonly property var gpusMerged: {
+        if (!root.gpuDetail || root.gpuDetail.length === 0) return root.gpus;
+        return root.gpus.map(function(g) {
+            const d = root.gpuDetail.find(function(x) { return x.slot === g.slot; });
+            return d && d.usage !== null && d.usage !== undefined ? d : g;
+        });
+    }
 
     function _pickGpu(list) {
         if (!list || list.length === 0) return null;
@@ -193,7 +205,9 @@ Singleton {
                     const d = JSON.parse(line);
                     if (d.procs) root.processes = d.procs;
                     if (d.gpus) root.gpuDetail = d.gpus;
-                } catch (e) {}
+                } catch (e) {
+                    if (!root._badLineLogged) { root._badLineLogged = true; Logger.warn("SystemMonitorService", "Ignoring a malformed telemetry line: " + String(e)); }
+                }
             }
         }
         onRunningChanged: if (!running) { root.processes = []; root.gpuDetail = []; }

@@ -1,11 +1,12 @@
 name: Lint
 
+# Called by ci.yml and release.yml (not triggered on its own, so pushes
+# don't run it twice).
 on:
   workflow_call:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
   shellcheck:
@@ -14,12 +15,34 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
-      - name: Run shellcheck across all scripts
+      - name: ShellCheck (all scripts, all severities)
         run: bash tests/scripts/test_shellcheck.sh
 
   repo-hygiene:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Scan for leftover markers, hardcoded paths, fake-implementation code
+      - name: Leftover markers, machine paths, stub markers
         run: bash tests/scripts/scan_repo_hygiene.sh
+
+  release-metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version consistency and documentation links
+        run: bash tests/scripts/test_release_metadata.sh
+
+  workflows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install actionlint 1.7.7 (checksum-verified)
+        run: |
+          base=https://github.com/rhysd/actionlint/releases/download/v1.7.7
+          curl -fsSLO "$base/actionlint_1.7.7_linux_amd64.tar.gz"
+          curl -fsSLO "$base/actionlint_1.7.7_checksums.txt"
+          grep ' actionlint_1.7.7_linux_amd64.tar.gz$' actionlint_1.7.7_checksums.txt | sha256sum -c -
+          tar -xzf actionlint_1.7.7_linux_amd64.tar.gz actionlint && sudo mv actionlint /usr/local/bin/
+      - name: Workflows
+        run: bash tests/scripts/test_workflows.sh
+
