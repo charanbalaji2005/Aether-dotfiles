@@ -6,6 +6,7 @@ import "../../theme"
 import "../../core"
 import "../../services"
 import "../../components"
+import "SettingsIndex.js" as SettingsIndex
 
 // Settings (SUPER+I). Every control writes Config (persisted live to
 // ~/.config/aether-shell/config.json) or calls a real backend — the
@@ -16,9 +17,31 @@ Scope {
     readonly property var accentPresets: ["#7C9CFF", "#B48CFF", "#38BDF8", "#2DD4BF", "#4ADE80", "#FBBF24", "#FB923C", "#F87171", "#F472B6"]
     readonly property var sections: [
         { id: "appearance", label: "Appearance", icon: "contrast" },
+        { id: "style", label: "Style & palette", icon: "star", file: "StyleSection" },
+        { id: "effects", label: "Effects & motion", icon: "bolt", file: "EffectsSection" },
         { id: "bar", label: "Bar", icon: "sliders" },
+        { id: "dockisland", label: "Dock & island", icon: "grid", file: "DockIslandSection" },
         { id: "notifications", label: "Notifications", icon: "bell" },
         { id: "wallpaper", label: "Wallpaper", icon: "image" },
+        { id: "wallfx", label: "Wallpaper effects", icon: "image", file: "WallpaperFxSection" },
+        { id: "battery", label: "Battery", icon: "battery", file: "BatterySection" },
+        { id: "lock", label: "Lock screen", icon: "lock", file: "LockSection" },
+        { id: "gestures", label: "Gestures", icon: "arrow-up", file: "GesturesSection" },
+        { id: "automation", label: "Automation", icon: "refresh", file: "AutomationSection" },
+        { id: "profiles", label: "Profiles", icon: "display", file: "ProfilesSection" },
+        { id: "terminal", label: "Terminal", icon: "code", file: "TerminalSection" },
+        { id: "keyboard", label: "Keyboard", icon: "keyboard", file: "KeyboardSection" },
+        { id: "mouse", label: "Mouse & touchpad", icon: "mouse", file: "MouseSection" },
+        { id: "displays", label: "Displays", icon: "display", file: "DisplaysSection" },
+        { id: "workspaces", label: "Workspaces", icon: "grid", file: "WorkspacesSection" },
+        { id: "widgets", label: "Widgets", icon: "widgets", file: "WidgetsSection" },
+        { id: "gpu", label: "GPU & rendering", icon: "gpu", file: "GpuSection" },
+        { id: "accessibility", label: "Accessibility", icon: "search", file: "AccessibilitySection" },
+        { id: "privacy", label: "Privacy & security", icon: "shield", file: "PrivacySection" },
+        { id: "ai", label: "AI assistant", icon: "sparkle", file: "AiSection" },
+        { id: "startup", label: "Startup apps", icon: "power", file: "StartupSection" },
+        { id: "backup", label: "Backup & recovery", icon: "archive", file: "BackupSection" },
+        { id: "developer", label: "Developer", icon: "code", file: "DeveloperSection" },
         { id: "performance", label: "Performance", icon: "gauge" },
         { id: "about", label: "About", icon: "activity" }
     ]
@@ -59,10 +82,17 @@ Scope {
         id: panel
         layerNamespace: "aether-settings"
         placement: "center"
-        cardWidth: Math.min(760, (screen ? screen.width : 1280) - 120)
-        cardHeight: Math.min(560, (screen ? screen.height : 900) - 140)
+        cardWidth: Math.min(880, (screen ? screen.width : 1280) - 120)
+        cardHeight: Math.min(640, (screen ? screen.height : 900) - 120)
 
         property string activeSection: "appearance"
+        property string searchText: ""
+        readonly property var filteredSections: {
+            if (searchText.trim().length < 2) return root.sections;
+            const hits = SettingsIndex.search(searchText, 12).map(function(e) { return e.id; });
+            const q = searchText.toLowerCase();
+            return root.sections.filter(function(s) { return hits.indexOf(s.id) >= 0 || s.label.toLowerCase().indexOf(q) >= 0; });
+        }
 
         onOpened: {
             HardwareService.ensureLoaded();
@@ -90,10 +120,38 @@ Scope {
                     Layout.bottomMargin: Metrics.spaceSm
                 }
 
-                Repeater {
-                    model: root.sections
+                // Search: filters the sections by title and the words inside
+                // them (theme/Palettes, "refresh rate", "api key", …).
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: 32
+                    radius: 16
+                    color: Colors.withAlpha(Colors.surface, 0.9)
+                    border.width: 1
+                    border.color: settingsSearch.activeFocus ? Colors.accent : Colors.border
+                    TextInput {
+                        id: settingsSearch
+                        anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12
+                        verticalAlignment: TextInput.AlignVCenter
+                        color: Colors.textPrimary; font.family: Typography.family; font.pixelSize: Typography.sizeSm
+                        onTextChanged: { panel.searchText = text; const hit = panel.filteredSections[0]; if (hit && text.length >= 2) panel.activeSection = hit.id; }
+                        Keys.onEscapePressed: text = ""
+                        Accessible.role: Accessible.EditableText
+                        Accessible.name: "Search settings"
+                    }
+                    Text { anchors.left: parent.left; anchors.leftMargin: 12; anchors.verticalCenter: parent.verticalCenter; visible: settingsSearch.text.length === 0
+                           text: "Search settings"; color: Colors.textMuted; font.family: Typography.family; font.pixelSize: Typography.sizeSm }
+                }
+                ListView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    spacing: Metrics.spaceXxs
+                    boundsBehavior: Flickable.StopAtBounds
+                    model: panel.filteredSections
                     delegate: Rectangle {
                         id: navItem
+                        width: ListView.view.width
                         required property var modelData
                         readonly property bool current: panel.activeSection === modelData.id
                         Layout.fillWidth: true
@@ -125,7 +183,6 @@ Scope {
                         }
                     }
                 }
-                Item { Layout.fillHeight: true }
             }
 
             Rectangle { Layout.preferredWidth: Metrics.borderWidth; Layout.fillHeight: true; color: Colors.border }
@@ -151,6 +208,24 @@ Scope {
                         font.family: Typography.family
                         font.pixelSize: Typography.sizeXl
                         font.weight: Typography.weightSemibold
+                    }
+
+                    // ══════════ Sections in their own files ══════════
+                    // Loaded only while selected: an unopened section costs nothing.
+                    Loader {
+                        Layout.fillWidth: true
+                        readonly property var entry: root.sections.filter(function(x) { return x.id === panel.activeSection; })[0]
+                        active: panel.open && entry !== undefined && entry.file !== undefined
+                        source: active ? "sections/" + entry.file + ".qml" : ""
+                        onStatusChanged: if (status === Loader.Error) Logger.error("Settings", "Section " + entry.file + " failed to load")
+                    }
+
+                    Loader {
+                        Layout.fillWidth: true
+                        active: panel.open && panel.activeSection === "notifications"
+                        source: active ? "sections/NotificationRulesSection.qml" : ""
+                        // Shown after the inline Notifications settings below.
+                        z: 1
                     }
 
                     // ══════════ Appearance ══════════

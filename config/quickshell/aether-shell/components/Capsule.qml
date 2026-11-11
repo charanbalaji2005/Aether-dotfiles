@@ -1,6 +1,7 @@
 import QtQuick
 import "../theme"
 import "../core"
+import "../animation"
 
 // Rounded, hoverable container used by every bar module.
 Rectangle {
@@ -24,6 +25,11 @@ Rectangle {
         enabled: !Motion.reducedMotion
         ColorAnimation { duration: Motion.fast }
     }
+
+    // Tactile press: a quick spring dip.
+    scale: press.value
+    SpringValue { id: press; preset: "snappy"; target: mouseArea.pressed ? 0.94 : 1.0 }
+    Component.onCompleted: press.snap(1.0)
 
     MouseArea {
         id: mouseArea

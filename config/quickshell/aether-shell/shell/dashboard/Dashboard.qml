@@ -24,7 +24,7 @@ Scope {
         cardHeight: Math.min(layout.implicitHeight + Metrics.spaceXl * 2, (screen ? screen.height : 900) - 100)
 
         onOpenChanged: {
-            SystemMonitorService.wantProcesses = open;
+            if (open) SystemMonitorService.wantProcessList(); else SystemMonitorService.releaseProcessList();
             if (open) HardwareService.ensureLoaded();
         }
 

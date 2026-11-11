@@ -1,10 +1,10 @@
 Name:           aetheros-dotfiles
-Version:        0.2.0
-Release:        1%{?dist}
+Version:        1.0.0
+Release:        0.1.rc1%{?dist}
 Summary:        AetherOS Hyprland dotfiles and Quickshell desktop shell
 
 License:        GPL-3.0-or-later
-URL:            https://github.com/example/aetheros-dotfiles
+URL:            https://github.com/OWNER/aetheros-dotfiles
 Source0:        %{name}.tar.gz
 # Source0 intentionally has no real upstream URL yet — this repo hasn't
 # been published to a specific location. Update both URL and Source0 once
@@ -77,6 +77,15 @@ ln -s ../share/%{name}/scripts/bin/aether-wallpaper \
 %{_bindir}/aether-wallpaper
 
 %changelog
+* Wed Nov 11 2026 AetherOS Project <noreply@example.invalid> - 1.0.0-0.1.rc1
+- 1.0 release candidate: NVML telemetry, GPU-pressure policy, assistant, widgets, Island 2.0,
+  28 settings sections, custom themes, displays with auto-revert. See CHANGELOG.md.
+
+* Wed Nov 11 2026 AetherOS Project <noreply@example.invalid> - 0.3.0-1
+- Installer lifecycle (check/dry-run/install/update/uninstall/rollback), snapshots, recovery,
+  safe-mode unit, animation/graphics engine, dock, island, overview, system centre, layouts,
+  automation, profiles, palettes, wallpaper engine, lock screen hardening. See CHANGELOG.md.
+
 * Mon Nov 09 2026 AetherOS Project <noreply@example.invalid> - 0.2.0-1
 - aether CLI backend (lib/aether): hardware detection, graphics/NVIDIA
   management, telemetry, performance profiles, diagnostics, repair.

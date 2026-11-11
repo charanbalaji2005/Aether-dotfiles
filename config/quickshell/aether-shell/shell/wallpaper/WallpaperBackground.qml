@@ -2,26 +2,31 @@ import QtQuick
 import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
+import Quickshell.Hyprland
 import "../../theme"
 import "../../services"
 import "../../core"
+import "../../graphics"
+import "../../animation"
 
-// Desktop wallpaper on the background layer of every monitor.
+// The desktop wallpaper on the background layer of every monitor.
 //
-//  * Per-display: Config.appearance.wallpapers[outputName] overrides the
-//    global wallpaper for that output.
-//  * Cross-fade between wallpapers (instant under reduced motion).
-//  * Optional blur via MultiEffect. The effect source is a static image, so
-//    the blurred texture is produced when the wallpaper changes — there is
-//    no per-frame cost while the desktop is idle.
-//  * Animated GIFs only play when enabled in Settings, on AC power, and
-//    without reduced motion; otherwise the first frame is shown.
-//  * Images are decoded at the screen's size (sourceSize), not their
-//    native 8K resolution, to keep GPU memory reasonable.
+// Rendering and transitions live in graphics/WallpaperStage.qml (pure Qt
+// Quick, runtime-tested); this file adds the window per monitor, the
+// services, pointer tracking, blur, dim and the ambient layers.
 //
-// (Previously this used `WlLayer.layer` without importing Quickshell.Wayland,
-// which is not a valid type — the background layer is set with
-// WlrLayershell.layer below.)
+// While idle:
+//   * parallax (opt-in): the pointer position, eased by a gentle spring,
+//     shifts the picture; with a depth map (<name>.depth.png next to the
+//     image) near pixels move more than far ones — real depth, see
+//     graphics/DepthImage.qml. The background layer only receives pointer
+//     motion when nothing covers it, so it settles when you work.
+//   * ambient layer (opt-in): particles (stars/snow/rain/dust) or aurora,
+//     only in the tier that allows them and paused under fullscreen apps.
+//   * blur (static): rendered once per wallpaper, not per frame.
+//   * GIFs play only when enabled, on AC power, without reduced motion.
+// Video wallpapers are drawn by mpvpaper (VideoWallpaperService) above
+// this layer; this static image remains underneath as the fallback.
 Scope {
     id: root
 
@@ -41,36 +46,89 @@ Scope {
                 color: Colors.bg0
                 visible: Config.appearance.enableBackground
 
+                // Precedence: this workspace's wallpaper (Settings → Workspaces),
+                // then this monitor's, then the global one. Switching to a
+                // workspace with its own wallpaper plays the normal transition.
+                readonly property var hyprMonitor: Hyprland.monitorFor(win.modelData)
+                readonly property int activeWs: hyprMonitor && hyprMonitor.activeWorkspace ? hyprMonitor.activeWorkspace.id : -1
                 readonly property string path: {
+                    const perWs = (Config.wallpaper.perWorkspace || {})[String(win.activeWs)];
+                    if (perWs && perWs.length > 0) return perWs;
                     const map = Config.appearance.wallpapers || {};
                     const own = win.modelData ? map[win.modelData.name] : undefined;
                     return (own && own.length > 0) ? own : WallpaperService.currentWallpaper;
                 }
-                readonly property bool animate: WallpaperService.isAnimated(path)
-                    && Config.appearance.animatedWallpapers
-                    && !ShellState.onBattery
-                    && !Motion.reducedMotion
+                readonly property string mode: Config.wallpaper.mode || "image"
+                readonly property bool animateGif: WallpaperService.isAnimated(path)
+                    && Config.appearance.animatedWallpapers && !ShellState.onBattery && !Motion.reducedMotion
                 readonly property real blurAmount: Math.max(0, Math.min(1, Config.appearance.wallpaperBlur || 0))
+                readonly property int tw: Math.max(1, win.width)
+                readonly property int th: Math.max(1, win.height)
 
-                // Two layers so the old wallpaper stays visible while the new one fades in.
-                property int front: 0
-                property string shownA: ""
-                property string shownB: ""
-
-                onPathChanged: {
-                    if (front === 0) { shownB = path; front = 1; }
-                    else { shownA = path; front = 0; }
-                }
-                Component.onCompleted: shownA = path
+                // ── Pointer parallax ──────────────────────────────────
+                HoverHandler { id: pointer; enabled: Effects.parallax }
+                SpringValue { id: px; preset: "gentle"; target: pointer.hovered ? (pointer.point.position.x / Math.max(1, win.width)) * 2 - 1 : 0 }
+                SpringValue { id: py; preset: "gentle"; target: pointer.hovered ? (pointer.point.position.y / Math.max(1, win.height)) * 2 - 1 : 0 }
 
                 Item {
                     id: stage
                     anchors.fill: parent
                     visible: win.blurAmount === 0
-                    layer.enabled: false
 
-                    WallLayer { source: win.shownA; opacity: win.front === 0 ? 1 : 0; animate: win.animate; targetWidth: win.width; targetHeight: win.height }
-                    WallLayer { source: win.shownB; opacity: win.front === 1 ? 1 : 0; animate: win.animate; targetWidth: win.width; targetHeight: win.height }
+                    // Generated wallpapers from the palette (no image needed).
+                    Rectangle {
+                        anchors.fill: parent
+                        visible: win.mode === "gradient"
+                        gradient: Gradient {
+                            orientation: Gradient.Vertical
+                            GradientStop { position: 0.0; color: Colors.mix(Colors.bg0, Colors.accent, 0.28) }
+                            GradientStop { position: 0.55; color: Colors.bg0 }
+                            GradientStop { position: 1.0; color: Colors.mix(Colors.bg0, Colors.accentAlt, 0.22) }
+                        }
+                    }
+                    Loader {
+                        anchors.fill: parent
+                        active: win.mode === "aurora"
+                        sourceComponent: AuroraSurface {
+                            strength: Colors.dark ? 0.55 : 0.35
+                            running: Effects.ambient && !WindowService.fullscreenActive
+                        }
+                    }
+
+                    WallpaperStage {
+                        id: wall
+                        visible: win.mode === "image"
+                        anchors.fill: parent
+                        path: win.path
+                        transition: WallpaperService.activeTransition
+                        duration: Config.wallpaper.transitionDuration
+                        depthPath: WallpaperService.depthFor(win.path)
+                        parallax: Effects.parallax
+                        offset: Qt.point(px.value, py.value)
+                        parallaxStrength: Config.wallpaper.parallaxStrength
+                        playGif: win.animateGif
+                        sourceWidth: win.tw; sourceHeight: win.th
+                    }
+
+                    // Ambient layer.
+                    Loader {
+                        anchors.fill: parent
+                        active: Effects.particles && ["stars", "snow", "rain", "dust"].indexOf(Config.wallpaper.ambient) >= 0
+                        sourceComponent: ParticleField {
+                            kind: Config.wallpaper.ambient
+                            density: Config.wallpaper.ambientDensity
+                            running: !WindowService.fullscreenActive
+                        }
+                    }
+                    Loader {
+                        anchors.fill: parent
+                        active: Config.wallpaper.ambient === "aurora" && Effects.ambient && !Effects.eco
+                        sourceComponent: AuroraSurface {
+                            opacity: 0.35 * Math.max(0.2, Config.wallpaper.ambientDensity)
+                            base: "#000000"
+                            running: !WindowService.fullscreenActive
+                        }
+                    }
                 }
 
                 MultiEffect {
@@ -88,37 +146,6 @@ Scope {
                     color: "#000000"
                     opacity: WallpaperService.dimOverlay
                     visible: WallpaperService.dimOverlay > 0
-                }
-
-                component WallLayer: Item {
-                    id: wl
-                    property string source: ""
-                    // Passed in explicitly rather than read from the enclosing window.
-                    property bool animate: false
-                    property int targetWidth: 1920
-                    property int targetHeight: 1080
-                    anchors.fill: parent
-                    Behavior on opacity { NumberAnimation { duration: Motion.reducedMotion ? 0 : 450; easing.type: Easing.InOutQuad } }
-
-                    Image {
-                        anchors.fill: parent
-                        visible: !wl.animate || !WallpaperService.isAnimated(wl.source)
-                        source: wl.source.length > 0 && !(wl.animate && WallpaperService.isAnimated(wl.source)) ? "file://" + wl.source : ""
-                        fillMode: Image.PreserveAspectCrop
-                        asynchronous: true
-                        cache: false
-                        sourceSize.width: wl.targetWidth
-                        sourceSize.height: wl.targetHeight
-                    }
-                    AnimatedImage {
-                        anchors.fill: parent
-                        visible: wl.animate && WallpaperService.isAnimated(wl.source)
-                        source: visible ? "file://" + wl.source : ""
-                        fillMode: Image.PreserveAspectCrop
-                        asynchronous: true
-                        cache: false
-                        playing: visible && wl.opacity > 0
-                    }
                 }
             }
         }

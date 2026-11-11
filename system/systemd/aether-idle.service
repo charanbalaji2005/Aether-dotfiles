@@ -1,0 +1,18 @@
+[Unit]
+Description=AetherOS idle management (hypridle: auto-lock, display off, suspend)
+Documentation=https://wiki.hypr.land/Hypr-Ecosystem/hypridle/
+PartOf=graphical-session.target
+After=graphical-session.target
+# Timings come from Settings → Lock screen via `aether idle apply`.
+ConditionPathExists=%h/.config/aether-shell/hypr/hypridle.conf
+
+[Service]
+Type=simple
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/env hypridle -c %h/.config/aether-shell/hypr/hypridle.conf
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=graphical-session.target

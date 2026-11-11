@@ -45,6 +45,11 @@ Singleton {
     property real netRxBps: -1
     property real netTxBps: -1
     property var gpus: []                     // see telemetry.py for fields
+    // Full GPU counters from the detail stream (only while a process view is
+    // open): includes awake hybrid dGPUs and per-GPU process lists (NVML).
+    property var gpuDetail: []
+    // Emitted after each main telemetry sample (PerformanceService's GPU-pressure policy listens).
+    signal sampled()
     readonly property var primaryGpu: _pickGpu(gpus)
     property var processes: []                // filled only while `wantProcesses`
 
@@ -57,7 +62,12 @@ Singleton {
     property var netTxHistory: []
 
     // Consumers (the dashboard) set this while visible.
-    property bool wantProcesses: false
+    // Reference-counted: the dashboard and the System Centre each hold one
+    // while their process list is on screen.
+    property int processConsumers: 0
+    readonly property bool wantProcesses: processConsumers > 0
+    function wantProcessList() { root.processConsumers += 1; }
+    function releaseProcessList() { root.processConsumers = Math.max(0, root.processConsumers - 1); }
 
     readonly property int interval: Math.max(500, Config.performance.telemetryInterval || 2000)
     readonly property real effectiveIntervalSeconds: (ShellState.onBattery && Config.performance.pauseOnBattery ? interval * 2 : interval) / 1000.0
@@ -112,6 +122,7 @@ Singleton {
         }
         if (d.gpus) {
             root.gpus = d.gpus;
+            root.sampled();
             const g = root._pickGpu(d.gpus);
             root.gpuHistory = root._push(root.gpuHistory, g && g.usage !== null ? g.usage : 0);
         }
@@ -181,10 +192,11 @@ Singleton {
                 try {
                     const d = JSON.parse(line);
                     if (d.procs) root.processes = d.procs;
+                    if (d.gpus) root.gpuDetail = d.gpus;
                 } catch (e) {}
             }
         }
-        onRunningChanged: if (!running) root.processes = []
+        onRunningChanged: if (!running) { root.processes = []; root.gpuDetail = []; }
     }
 
     // ── Fallback: direct /proc polling (original implementation) ────────

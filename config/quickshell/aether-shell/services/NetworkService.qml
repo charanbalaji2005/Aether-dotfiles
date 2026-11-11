@@ -29,6 +29,7 @@ Singleton {
     property string busySsid: ""
     property string lastError: ""
     property string wifiDevice: ""     // e.g. wlp2s0, from device status
+    property var vpns: []              // names of active VPN / WireGuard connections
 
     // ── Status ──────────────────────────────────────────────────────────
     Process {
@@ -97,8 +98,27 @@ Singleton {
         onTriggered: root.refresh()
     }
 
+    Process {
+        id: vpnProcess
+        command: ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show", "--active"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const out = [];
+                for (const line of this.text.split("\n")) {
+                    // nmcli -t escapes ':' inside fields as '\:'; the type is the last field.
+                    const i = line.lastIndexOf(":");
+                    if (i < 0) continue;
+                    const type = line.substring(i + 1);
+                    if (type === "vpn" || type === "wireguard") out.push(line.substring(0, i).replace(/\\:/g, ":"));
+                }
+                if (JSON.stringify(out) !== JSON.stringify(root.vpns)) root.vpns = out;
+            }
+        }
+    }
+
     function refresh() {
         statusProcess.running = true;
+        vpnProcess.running = true;
         radioProcess.running = true;
         if (!wifiProcess.running) wifiProcess.running = true;
     }

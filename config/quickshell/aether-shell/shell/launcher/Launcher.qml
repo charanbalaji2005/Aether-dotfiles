@@ -6,13 +6,16 @@ import "../../theme"
 import "../../core"
 import "../../services"
 import "../../components"
+import "../settings/SettingsIndex.js" as SettingsIndex
 
 // Application launcher (SUPER+D, or the grid button in the bar).
 //
 // Keyboard:  type to search · ↑/↓ select · PgUp/PgDn page · Home/End
 //            Enter launch · Tab / Shift+Tab cycle categories
 //            Ctrl+F (or right-click) pin/unpin favourite · Esc close
-// With an empty query it shows Favourites, then Recent, then the chosen
+// Prefixes: "/" searches your files, ">" runs a command in your terminal
+// (only when you press Enter). Plain searches also match Settings and
+// AetherOS actions. With an empty query it shows Favourites, then Recent, then the chosen
 // category (or all apps).
 Scope {
     id: root
@@ -30,11 +33,44 @@ Scope {
         property int selectedIndex: 0
         readonly property var categoryList: [""].concat(ApplicationService.categories())
 
-        // Rows: { kind: "header", label } or { kind: "app", app }
+        // Rows: { kind: "header", label } or a selectable item:
+        //   app      { app }                      launch the desktop entry
+        //   setting  { title, subtitle, section } open Settings there
+        //   action   { title, subtitle, action }  an allowlisted shell action
+        //   file     { title, subtitle, path }    open with the default app ("/" prefix)
+        //   command  { title, command }           run in your terminal (">" prefix, Enter only)
+        //   history  { title }                    a previous search (fills the box)
+        readonly property bool fileMode: Config.launcher.searchFiles && query.charAt(0) === "/"
+        readonly property bool commandMode: Config.launcher.commandMode && query.charAt(0) === ">"
+        readonly property string term: (fileMode || commandMode) ? query.substring(1).trim() : query.trim()
+        onTermChanged: if (fileMode) SearchService.search(term)
+
         readonly property var rows: {
             const out = [];
+            if (commandMode) {
+                if (term.length > 0) out.push({ kind: "command", title: term, command: term });
+                return out;
+            }
+            if (fileMode) {
+                out.push({ kind: "header", label: SearchService.searching ? "Searching files…" : "Files" + (SearchService.backend === "find" ? " (install plocate for instant results)" : "") });
+                for (const f of SearchService.results) out.push({ kind: "file", title: f.name, subtitle: f.dir, path: f.path });
+                return out;
+            }
             if (query.length > 0) {
                 for (const a of ApplicationService.search(query)) out.push({ kind: "app", app: a });
+                const q = query.toLowerCase();
+                const acts = ActionService.actions.filter(function(x) { return x.id !== "none" && x.label.toLowerCase().indexOf(q) >= 0; }).slice(0, 3);
+                if (acts.length) {
+                    out.push({ kind: "header", label: "Actions" });
+                    for (const x of acts) out.push({ kind: "action", title: x.label, subtitle: "AetherOS", action: x.id });
+                }
+                if (Config.launcher.searchSettings) {
+                    const st = SettingsIndex.search(query, 4);
+                    if (st.length) {
+                        out.push({ kind: "header", label: "Settings" });
+                        for (const e of st) out.push({ kind: "setting", title: e.title, subtitle: "Settings", section: e.id });
+                    }
+                }
                 return out;
             }
             const shown = {};
@@ -49,6 +85,11 @@ Scope {
                     out.push({ kind: "header", label: "Recent" });
                     for (const a of rec) { out.push({ kind: "app", app: a }); shown[a.id] = true; }
                 }
+                const hist = (Config.launcher.history || []).slice(0, 5);
+                if (hist.length > 0) {
+                    out.push({ kind: "header", label: "Recent searches" });
+                    for (const h of hist) out.push({ kind: "history", title: h });
+                }
                 out.push({ kind: "header", label: "All applications" });
                 for (const a of ApplicationService.applications) if (!shown[a.id]) out.push({ kind: "app", app: a });
             } else {
@@ -57,7 +98,7 @@ Scope {
             return out;
         }
 
-        function _isApp(i) { return i >= 0 && i < rows.length && rows[i].kind === "app"; }
+        function _isApp(i) { return i >= 0 && i < rows.length && rows[i].kind !== "header"; }
         function _firstApp() { for (let i = 0; i < rows.length; i++) if (_isApp(i)) return i; return -1; }
 
         // Move the selection by `delta` app rows, skipping section headers and
@@ -78,6 +119,13 @@ Scope {
             list.positionViewAtIndex(selectedIndex, ListView.Contain);
         }
 
+        function _remember() {
+            // Only plain searches that led somewhere; never commands or file paths.
+            if (fileMode || commandMode || query.trim().length < 2 || Config.launcher.historyLimit === 0) return;
+            const h = [query.trim()].concat((Config.launcher.history || []).filter(function(x) { return x !== query.trim(); }));
+            Config.launcher.history = h.slice(0, Config.launcher.historyLimit);
+        }
+
         function cycleCategory(dir) {
             const i = categoryList.indexOf(category);
             category = categoryList[(i + dir + categoryList.length) % categoryList.length];
@@ -85,7 +133,22 @@ Scope {
 
         function launchSelected() {
             if (!_isApp(selectedIndex)) return;
-            ApplicationService.launch(rows[selectedIndex].app);
+            const r = rows[selectedIndex];
+            switch (r.kind) {
+            case "history": searchField.text = r.title; return;
+            case "app": ApplicationService.launch(r.app); break;
+            case "setting": EventBus.settingsRequested(r.section); break;
+            case "action": ActionService.run(r.action); break;
+            case "file": SearchService.open(r.path); break;
+            case "command":
+                // Explicit user intent (typed after ">", confirmed with Enter).
+                // Runs visibly in the user's terminal, which stays open on the
+                // result; the text is a positional argument to a constant script.
+                Quickshell.execDetached(Paths.helper("aether-terminal", ["-e", "sh", "-c",
+                    'printf "\\033[2m$ %s\\033[0m\\n" "$1"; eval "$1"; printf "\\n[exit %s] Enter closes this window " "$?"; read -r _', "sh", r.command]));
+                break;
+            }
+            _remember();
             hide();
         }
 
@@ -264,8 +327,16 @@ Scope {
                             anchors.rightMargin: Metrics.spaceMd
                             spacing: Metrics.spaceMd
 
+                            AetherIcon {
+                                visible: !row.isHeader && row.modelData.kind !== "app"
+                                Layout.preferredWidth: 22; Layout.preferredHeight: 22
+                                Layout.leftMargin: 5; Layout.rightMargin: 5
+                                name: ({ setting: "gear", action: "bolt", file: "image", command: "code", history: "search" })[row.modelData.kind] || "search"
+                                color: Colors.textSecondary
+                            }
                             AppIcon {
-                                iconName: row.isHeader ? "" : row.modelData.app.icon
+                                visible: !row.isHeader && row.modelData.kind === "app"
+                                iconName: row.isHeader || row.modelData.kind !== "app" ? "" : row.modelData.app.icon
                                 Layout.preferredWidth: 32
                                 Layout.preferredHeight: 32
                                 scale: row.selected && !Motion.reducedMotion ? 1.08 : 1.0
@@ -276,7 +347,8 @@ Scope {
                                 spacing: 0
                                 Layout.fillWidth: true
                                 Text {
-                                    text: row.isHeader ? "" : row.modelData.app.name
+                                    text: row.isHeader ? "" : row.modelData.kind === "app" ? row.modelData.app.name
+                                        : row.modelData.kind === "command" ? "Run in terminal: " + row.modelData.title : row.modelData.title
                                     color: Colors.textPrimary
                                     font.family: Typography.family
                                     font.pixelSize: Typography.sizeMd
@@ -285,7 +357,9 @@ Scope {
                                     Layout.fillWidth: true
                                 }
                                 Text {
-                                    text: row.isHeader ? "" : (row.modelData.app.genericName || row.modelData.app.comment)
+                                    text: row.isHeader ? "" : row.modelData.kind === "app" ? (row.modelData.app.genericName || row.modelData.app.comment)
+                                        : row.modelData.kind === "command" ? "Press Enter to run it in " + (Config.terminal.preferred === "auto" ? "your terminal" : Config.terminal.preferred)
+                                        : (row.modelData.subtitle || "")
                                     visible: text.length > 0
                                     color: Colors.textMuted
                                     font.family: Typography.family
@@ -296,8 +370,8 @@ Scope {
                             }
 
                             AetherIcon {
-                                readonly property bool fav: !row.isHeader && ApplicationService.isFavorite(row.modelData.app)
-                                visible: fav || rowArea.containsMouse || row.selected
+                                readonly property bool fav: !row.isHeader && row.modelData.kind === "app" && ApplicationService.isFavorite(row.modelData.app)
+                                visible: !row.isHeader && row.modelData.kind === "app" && (fav || rowArea.containsMouse || row.selected)
                                 width: 14; height: 14
                                 name: fav ? "star-filled" : "star"
                                 color: fav ? Colors.warning : Colors.textMuted
@@ -312,7 +386,7 @@ Scope {
                             cursorShape: Qt.PointingHandCursor
                             onEntered: panel.selectedIndex = row.index
                             onClicked: function(mouse) {
-                                if (mouse.button === Qt.RightButton) ApplicationService.toggleFavorite(row.modelData.app);
+                                if (mouse.button === Qt.RightButton) { if (row.modelData.kind === "app") ApplicationService.toggleFavorite(row.modelData.app); }
                                 else { panel.selectedIndex = row.index; panel.launchSelected(); }
                             }
                         }
@@ -322,8 +396,10 @@ Scope {
                 Text {
                     parent: list
                     anchors.centerIn: parent
-                    visible: panel.rows.filter(function(r) { return r.kind === "app"; }).length === 0
-                    text: ApplicationService.available ? "No applications found" : "Loading applications…"
+                    visible: panel.rows.filter(function(r) { return r.kind !== "header"; }).length === 0
+                    text: panel.commandMode ? "Type a command, then Enter to run it in your terminal"
+                        : panel.fileMode ? (SearchService.searching ? "" : (panel.term.length < 2 ? "Type at least two letters to search your files" : "No files found"))
+                        : ApplicationService.available ? "No results" : "Loading applications…"
                     color: Colors.textMuted
                     font.family: Typography.family
                     font.pixelSize: Typography.sizeSm

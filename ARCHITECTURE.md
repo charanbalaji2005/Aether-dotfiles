@@ -1,118 +1,110 @@
 # Architecture
 
-This covers the repository as a whole. The shell's internal QML architecture (layering rules,
-service pattern) is in `config/quickshell/aether-shell/ARCHITECTURE.md`.
+The shell's internal QML architecture is in
+[config/quickshell/aether-shell/ARCHITECTURE.md](config/quickshell/aether-shell/ARCHITECTURE.md).
+This document covers the repository as a whole.
 
 ## Layers
 
 ```
-┌────────────────────────── Desktop shell (Quickshell / QML) ──────────────────────────┐
-│ shell/        bar · launcher · control centre · dashboard · notifications · OSD ·   │
-│               settings · lock · power menu · wallpaper · clipboard · bluetooth      │
-│ components/   PopupPanel, GlassPanel, ToggleTile, StatTile, Sparkline, AetherIcon…  │
-│ services/     one system concern each (Audio, Network, SystemMonitor, Theme, …)     │
-│ theme/ core/  design tokens · config · event bus · shared UI state                  │
-└───────────────┬────────────────────────────────────────────┬──────────────────────────┘
-                │ Quickshell modules (Hyprland, PipeWire,     │ `aether telemetry --stream`,
-                │ UPower, BlueZ, MPRIS, notifications)        │ `aether hardware --json`,
-                │ + nmcli, wpctl, brightnessctl, hyprsunset,  │ `aether theme accent`,
-                │   powerprofilesctl, hyprctl, cliphist, grim │ `aether performance hyprland`
-                ▼                                             ▼
-        Linux / D-Bus / Wayland             ┌──── AetherOS CLI backend (lib/aether, Python) ────┐
-                                            │ hw/        system · cpu · gpu (PCI sysfs)         │
-                                            │ graphics/  stack (Mesa/GL/Vulkan/VA-API) ·        │
-                                            │            nvidia (branch, akmods, Secure Boot) · │
-                                            │            report (detect/drivers/verify) ·       │
-                                            │            hyprconf (hardware/compat fragments)   │
-                                            │ telemetry · performance · theme · cli · util      │
-                                            └────────────────────────────────────────────────────┘
-┌────────────────────────── Dotfiles layer ─────────────────────────────────────────────┐
-│ config/hypr (Hyprland) · config/kitty · config/zsh · theme/gtk · theme/wallpapers     │
-│ scripts/  bootstrap · setup-symlinks · backup · restore · uninstall · update · doctor │
-│ scripts/bin/  aether (CLI entry) · aether-screenshot · aether-wallpaper              │
-│ system/systemd/  aether-shell.service · aether-clipboard.service                     │
-│ packages/  fedora (required + optional) · arch · generic                             │
-└───────────────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────── AetherOS Shell (Quickshell / QML) ────────────────────────────┐
+│ shell/       bar · dock · island · overview · launcher · control centre · dashboard ·    │
+│              system centre · layouts · notifications · settings (+17 sections) · lock ·  │
+│              OSD · wallpaper · gestures · power menu · clipboard · bluetooth            │
+│ components/  GlassPanel, Switch, Slider, ChipGroup, BatteryIcon, RadialGauge, MotionCard…│
+│ graphics/    shader materials (glass, glow, aurora, transition, depth) · WallpaperStage · │
+│              ParticleField · ShaderLibrary          shaders/*.frag → *.frag.qsb         │
+│ animation/   SpringValue (physics) · SpringBehavior · Reveal · GestureTracker           │
+│ automation/  Rules.js (rule schema shared with Python)                                   │
+│ services/    one system concern each — Hyprland, windows, audio, power, network, media, │
+│              performance, automation, timers, recording, visualiser, wallpaper, video…  │
+│ theme/ core/ tokens (Colors/Palettes, Metrics, Typography, Motion, Materials, Effects) · │
+│              Config · EventBus · AnimationCoordinator · Logger · Paths                   │
+└───────────────┬──────────────────────────────────────────────┬────────────────────────────┘
+                │ Quickshell modules: Hyprland IPC, PipeWire,   │ `aether … --json` (CliService),
+                │ UPower, BlueZ, MPRIS, notifications, PAM,     │ `aether telemetry --stream`
+                │ session lock; hyprctl, nmcli, wpctl, cava,    │
+                │ mpvpaper, wf-recorder (via helpers)           │
+                ▼                                               ▼
+        Linux / D-Bus / Wayland          ┌──────── aether CLI backend (lib/aether, Python ≥ 3.9, stdlib) ────────┐
+                                         │ hw/ graphics/ telemetry nvml render performance capabilities         │
+                                         │ config (schema v4+migrations) snapshots profiles palettes themes     │
+                                         │ appearance layouts automation sysinfo inputconf displays autostart   │
+                                         │ workspaces apps widgets ai/ (providers secrets registry service)     │
+                                         │ audit redact · cli + cli_desktop + cli_v1                            │
+                                         └───────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────── Dotfiles & system layer ──────────────────────────────────────┐
+│ install.sh (check · dry-run · install · update · uninstall · rollback)                     │
+│ scripts/  lib/common.sh (managed-path list, manifest) · setup-symlinks · backup · restore ·│
+│           rollback · uninstall · build-shaders · doctor     bin/ aether · aether-terminal ·│
+│           aether-record · aether-screenshot · aether-wallpaper                             │
+│ config/hypr (rules.conf / rules-v2.conf, recovery.conf) · kitty · zsh (+ profiles/)       │
+│ system/systemd  aether-shell · aether-shell-safe (OnFailure) · aether-clipboard · aether-idle│
+│ packages/fedora packages · recommended · optional · advanced · repos.conf (COPR, consent) │
+└────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Why a Python backend
+## 1.0 additions at a glance
 
-The shell previously forked `cat`/`df` every two seconds and had no way to read GPUs, sensors
-or driver state. Hardware detection needs parsing (PCI uevent, hwmon, `nvidia-smi`, `vainfo`,
-`vulkaninfo`, `mokutil`, `dnf`) that is fragile in QML JavaScript and in bash, and it needs
-tests. So:
+| Concern | Backend | Shell |
+|---|---|---|
+| GPU telemetry | `nvml.py` (ctypes NVML), `telemetry.py` (hybrid-safe) | `SystemMonitorService` (+ detail stream) |
+| Rendering policy | `capabilities.py`, `render.py` | `PerformanceService` + `policy/Pressure.js` |
+| Assistant | `ai/` (providers, keyring, registry, service), `audit.py`, `redact.py` | `AssistantService`, `KeyringService`, `shell/assistant` |
+| Widgets | `widgets.py` (manifest, static scanner, install) | `WidgetService`, `shell/widgets` (`WidgetApi`, `WidgetLayer`) |
+| Input / displays | `inputconf.py`, `displays.py` (watchdog) | `SystemSettingsService`, Keyboard/Mouse/Displays sections |
+| Workspaces / startup | `workspaces.py`, `apps.py`, `autostart.py` | Workspaces/Startup sections, bar + overview names |
+| Themes | `themes.py` + `palettes.py` | `ThemeService.userPalettes` → `Colors` |
+| Privacy | `scripts/bin/aether-clip-store` | `PrivacyService`, `ClipboardService` retention, notification rules |
 
-* **Standard library only, Python ≥ 3.9.** Fedora always ships python3 (dnf depends on it);
-  nothing is pip-installed.
-* **One entry point.** `scripts/bin/aether` keeps its bash session commands and dispatches
-  `system|hardware|cpu|gpu|graphics|performance|diagnostics|repair|hyprland|theme|telemetry`
-  to `python3 -I` (isolated mode: no PYTHONPATH, no user site, no CWD imports).
-* **Testable by construction.** Every read of `/sys`, `/proc`, `/etc` and every subprocess goes
-  through `util.Context`. Tests point it at fixture trees (`AETHER_SYSROOT`) and canned command
-  output (`AETHER_COMMAND_FIXTURES`); real use reads the live system. Commands always run as
-  argv lists — never through a shell.
-* **One telemetry process.** The shell runs a single long-lived `aether telemetry --stream`
-  (JSON line per interval) instead of forking per metric. Sensors are discovered once. A
-  runtime-suspended dGPU is never queried (that would wake it). NVIDIA desktops use one
-  `nvidia-smi -lms` child. Unavailable values are `null` with a reason. If the backend can't
-  run, `SystemMonitorService` falls back to the original `/proc` polling.
+## Principles
 
-## Per-machine state lives outside the repo
+* **Real data or nothing.** Every metric, device and window comes from the system; a missing
+  provider makes the feature say *unavailable* and why. Nothing is simulated.
+* **One source of truth per contract,** checked by tests:
+  config schema — `core/Config.qml` → generated `lib/aether/_schema_data.py`;
+  palettes — `theme/Palettes.js`, parsed by Python for terminals and Hyprland;
+  automation rule tables — `automation/Rules.js` ≡ `lib/aether/automation.py`;
+  action ids — `services/ActionService.qml` ≡ `config.ACTIONS`;
+  managed paths — `scripts/lib/common.sh` for every install script.
+* **Data, never code, crosses trust boundaries.** Imported profiles, settings and automation
+  rules are validated against allowlists; there is no setting whose value is a command. Shell
+  scripts launched from QML are constants with values passed positionally (`"$1"`); tests
+  enforce it.
+* **Least privilege.** Nothing runs as root by itself. Package installs are `sudo dnf …` shown
+  first; updates open a terminal so you see the transaction; SELinux, firewall, Secure Boot,
+  bootloader, kernel and display manager are never modified.
+* **Idle costs nothing.** Springs stop when settled; FrameAnimation-driven work, the visualiser,
+  thumbnails, process lists and polling exist only while a consumer is visible; telemetry is one
+  long-lived process; window data refreshes on Hyprland events, debounced.
+* **Graceful degradation.** Each shader effect has a non-shader rendering; a failed shader is
+  recorded once and its fallback used for the session; optional QML (thumbnails) loads through
+  `Loader.source` so a missing Quickshell type can't break the shell; a crash-looping shell is
+  replaced by the safe-mode unit.
 
-`config/` is symlinked into `~/.config`, so anything generated inside it would show as
-uncommitted changes and would be wrong on the next machine. Machine-specific files therefore
-live in `~/.config/aether-shell/`:
+## Per-machine state lives outside the repository
 
-| File | Written by |
+`config/` is symlinked into `~/.config`; generated files would otherwise show as repository
+changes and be wrong on the next machine. So:
+
+| Path | Written by |
 |---|---|
-| `config.json` | the shell's Settings (FileView/JsonAdapter, live reload); `aether theme` edits it atomically |
-| `hypr/hardware.conf` | `aether graphics configure` |
-| `hypr/compat.conf` | `aether hyprland compat` |
-| `hypr/profile.conf` | `aether performance hyprland <profile>` |
+| `~/.config/aether-shell/config.json` (0600) | the shell (live), `aether config/theme/profile` |
+| `~/.config/aether-shell/hypr/{hardware,compat,profile,theme,cursor,hypridle}.conf` | `aether graphics configure`, `hyprland compat` (also at login, `--if-stale`), `performance hyprland`, `theme apply`, `theme cursor`, `idle apply` |
+| `~/.config/aether-shell/terminal/*` | `aether theme apply` (kitty/foot/alacritty/ghostty themes, kitty settings, zsh profile) |
+| `~/.config/aether-shell/{profiles/,layouts.json}` | `aether profile save/import`, `aether layout save` |
+| `~/.local/state/aether/` | logs, `manifest.tsv` + `install.state` (installer), `snapshots/`, layout undo |
+| `~/.cache/aether-shell/shaders/` | `scripts/build-shaders.sh` (shaders for the installed Qt) |
+| `$XDG_RUNTIME_DIR/aether-*` | recorder PID, cava config, lock marker (tmpfs: gone at logout) |
 
-`setup-symlinks.sh` creates the three fragments (comments only) so Hyprland's `source =`
-lines never fail; generators back up the previous version (`*.bak-<ts>`, last 5 kept) and show a
-diff before replacing a hand-edited file.
+## Version-dependent Hyprland syntax
 
-## Safety rules (enforced in code and tests)
+`compat.conf` is generated for the installed Hyprland: gesture syntax (< 0.51 vs ≥ 0.51) and
+which rules file to source (`rules.conf` < 0.53, `rules-v2.conf` ≥ 0.53). It's regenerated at
+every login when the version changed (`aether hyprland compat --if-stale`). Tests keep the two
+rule files equivalent.
 
-* No command runs as root by itself; privileged steps are `sudo <exact command>`, printed first.
-* Confirmation defaults to *no* when stdin is not a terminal.
-* Driver installation is a plan → typed confirmation (`install`) → execution with a JSON record
-  and rollback instructions. Unknown GPUs are never auto-installed. Secure Boot is never
-  disabled (tests assert no such command can appear in a plan).
-* Hybrid laptops never get NVIDIA forced globally (tested).
-* Shell → helper calls pass values as positional arguments (`Paths.helper()`); the previous
-  wallpaper path interpolation into `bash -c` was a command-injection bug and is fixed.
-* `restore.sh` only restores allowlisted paths and rejects traversal.
+## Testing
 
-## Scripts
-
-Unchanged responsibilities, extended:
-
-- `install.sh` → `scripts/bootstrap.sh`: packages (asks), Quickshell build (asks), backup, links,
-  hardware detection, fragments, optional NVIDIA plan, services, validation.
-- `scripts/setup-symlinks.sh`: links only + creates missing fragments. No sudo.
-- `scripts/backup.sh` / `restore.sh` / `uninstall.sh`: the safety net (now also backs up
-  `config.json` and the fragments).
-- `scripts/doctor.sh`: dependency/session checks; `aether diagnostics` runs it plus config,
-  graphics, power and sensor checks.
-- `scripts/update.sh`: pull, re-link, validate with `aether hyprland`.
-
-Symlink targets remain an explicit list (adding a directory is a deliberate one-line change).
-
-## Testing philosophy
-
-Unchanged: every test runs a real tool or real code with real assertions; gaps are documented,
-not papered over. See `tests/run-all.sh` and [TEST_REPORT.md](TEST_REPORT.md):
-
-| Suite | What it really runs |
-|---|---|
-| `tests/scripts/test_shellcheck.sh` | shellcheck on every script |
-| `tests/scripts/scan_repo_hygiene.sh` | leftover-marker / stub / hard-coded-path scan |
-| `tests/hyprland/test_config_syntax.sh` | brace balance, source wiring, fragment ordering, no obsolete NVIDIA hacks, layer namespaces exist in QML |
-| `tests/shell/test_qml_structure.sh` | brace/paren balance, import resolution |
-| `tests/shell/test_qml_lint.sh` | Qt's `qmllint` — fails on real QML syntax errors |
-| `tests/config/test_config_files.sh` | systemd units, package lists, JSON, every `Config.x.y` key declared, every IPC target exists |
-| `tests/python/run_python_tests.sh` | ~85 unit tests: CPU/GPU detection, driver-branch selection, install-plan safety, hybrid rules, Secure Boot, telemetry, CLI end-to-end |
-| `tests/integration/test_symlink_lifecycle.sh` | install/backup/restore/uninstall in a fake `$HOME` |
+`tests/run-all.sh` runs 11 suites (plus generated-file checks in CI) — see [TEST_REPORT.md](TEST_REPORT.md) for what each one
+actually proves and what still needs a real session.

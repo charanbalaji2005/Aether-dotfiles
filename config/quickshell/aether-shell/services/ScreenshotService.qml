@@ -26,6 +26,7 @@ Singleton {
                 if (path.length > 0) {
                     Logger.info("ScreenshotService", "Saved " + path);
                     EventBus.notificationRequested("Screenshot saved", path, "normal");
+                    if (Config.island.showScreenshots) EventBus.islandEvent("screenshot", { text: "Screenshot saved", file: path });
                 }
             }
         }

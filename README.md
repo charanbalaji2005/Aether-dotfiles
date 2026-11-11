@@ -1,90 +1,50 @@
 # AetherOS
 
-A complete, hardware-aware Hyprland desktop for Fedora: compositor configuration, the original
-AetherOS Shell (Quickshell/QML) — panel, launcher, control centre, system dashboard,
-notifications, settings, lock screen — a hardware/graphics CLI with a Fedora NVIDIA driver
-installer, theming, and safe install/backup/restore tooling.
+**A complete, GPU-aware Hyprland desktop for Fedora.** An original shell built on
+Quickshell/QML with its own animation and graphics engine, a hardware-aware backend, an
+optional local-first assistant, and an installer that can check, preview, install, update,
+uninstall and roll back.
 
-Works on NVIDIA, AMD and Intel GPUs (including hybrid laptops) and on Intel and AMD CPUs.
-Hardware is **detected**, never assumed.
+> **Status: 1.0.0-rc.1 (release candidate).** Everything below is implemented and covered by
+> the automated test suites. It has **not yet been validated on physical hardware** or a live
+> session — [docs/HARDWARE.md](docs/HARDWARE.md) has the checklist that gates 1.0.0. Keep a TTY
+> (Ctrl+Alt+F3) handy for the first login and read [RECOVERY.md](RECOVERY.md).
 
-```
-aetheros-dotfiles/
-├── install.sh                     # fresh-machine setup → scripts/bootstrap.sh
-├── config/
-│   ├── hypr/                      # Hyprland (+ recovery.conf)
-│   ├── quickshell/aether-shell/   # the desktop shell (QML)
-│   ├── kitty/  zsh/
-├── lib/aether/                    # aether CLI backend (Python, stdlib only)
-│   ├── hw/                        #   system · cpu · gpu detection
-│   ├── graphics/                  #   Mesa/Vulkan/VA-API · NVIDIA · reports · Hyprland GPU config
-│   └── telemetry · performance · theme · cli
-├── scripts/                       # bootstrap · setup-symlinks · backup · restore · update · doctor
-│   └── bin/aether                 # the CLI entry point
-├── system/systemd/                # aether-shell / aether-clipboard user services
-├── packages/fedora/               # packages.txt (required) · optional.txt
-├── theme/                         # GTK theme, wallpapers
-├── docs/                          # guides (below)
-└── tests/                         # shellcheck, qmllint, config, Python unit, integration
-```
-
-## Install
+## Install (Fedora 41+)
 
 ```sh
-git clone <this-repo> ~/aetheros-dotfiles && cd ~/aetheros-dotfiles
-./install.sh
+git clone https://github.com/OWNER/aetheros-dotfiles ~/aetheros-dotfiles && cd ~/aetheros-dotfiles
+./install.sh --check      # read-only preflight
+./install.sh --dry-run    # everything it would do
+./install.sh              # install (asks before packages; never replaces ~/.zshrc without a yes)
 ```
 
-Asks before installing anything, backs up existing configs, never deletes them. Full details,
-dependencies and recovery: **[INSTALLATION.md](INSTALLATION.md)**.
+Undo at any time with `./install.sh --rollback`. Details: [INSTALLATION.md](INSTALLATION.md).
 
-## The desktop
+## What you get
 
-| Surface | Open with | What it does |
-|---|---|---|
-| **Panel** | always | launcher button, workspaces, window title, centred clock, CPU/RAM/GPU usage + temperatures, network speed, tray, media, Bluetooth, network, volume, microphone, battery, notifications, control centre. Styles: *floating* island (default), *full* width, centred *dock*; top or bottom; adjustable height |
-| **Launcher** | `SUPER+D` | fuzzy search over names/keywords/descriptions, favourites, recent apps, categories, keyboard-driven |
-| **Control centre** | `SUPER+A` | Wi-Fi (network list, passwords), Bluetooth, DND, night light, dark mode, microphone, battery saver, performance mode, volume / mic / brightness sliders, output & input device selection, media, displays, wallpaper, power |
-| **Dashboard** | `SUPER+N` | CPU/RAM/GPU/network graphs, CPU & GPU temperatures, VRAM, disk, per-thread load, top processes, uptime, hardware, calendar |
-| **Notifications** | `SUPER+,` | grouped history, per-item/per-app clear, Do Not Disturb, animated toasts with actions |
-| **Settings** | `SUPER+I` | theme (dark/light/auto), accent (presets, hex, or from wallpaper), transparency, blur, animation speed, reduced motion, bar, notifications, wallpaper, performance |
+| | |
+|---|---|
+| **Shell** | panel, dock (magnification, previews), Dynamic Island, overview/exposé, launcher (apps, settings, files, commands), control centre, dashboard, system centre, notification centre, window layouts, assistant, desktop widgets, lock screen (PAM) |
+| **Look** | 18 palettes + your own themes (shared with kitty/foot/alacritty/ghostty and Hyprland borders), glass presets, five original GLSL shaders with fallbacks, physics springs, 5 motion profiles, wallpaper engine (transitions, depth parallax, particles, aurora, gradients, video, schedules, per workspace) |
+| **GPU** | NVML telemetry without waking a sleeping hybrid dGPU, quality tiers (eco/performance/balanced/ultra) chosen from hardware, power, frame pacing and GPU/VRAM pressure — with the reasons shown |
+| **System** | keyboard (XKB-validated), mouse/touchpad, displays with auto-revert, startup apps, workspaces and session restore, power profiles and auto power-saver, idle dim/lock/suspend, updates, user services, security posture |
+| **Safety** | snapshots with checksums, last-known-good, safe-mode shell on crash loops, one-command recovery, audit log, secret redaction, no command strings from settings, profiles, rules or the assistant |
 
-Design: glass surfaces (compositor blur + tint + hairline sheen), one token-based design system
-for dark and light themes, consistent motion with speed control and reduced-motion support,
-original vector icon set. Metrics the hardware can't provide are shown as *Unavailable* with the
-reason — never as invented numbers.
+28 Settings sections, searchable — [docs/SETTINGS.md](docs/SETTINGS.md). Keys —
+[docs/KEYBINDS.md](docs/KEYBINDS.md). CLI — [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md) (34 commands, generated from the code).
 
-## The `aether` CLI
+## Documentation
 
-```sh
-aether system | hardware | cpu [--watch] | gpu [--watch]
-aether gpu run <command>                  # run on the discrete GPU (hybrid laptops)
-aether graphics detect | drivers | verify | install-nvidia | configure
-aether performance [set <power-profile> | hyprland <quality|balanced|low-latency|battery>]
-aether diagnostics | repair | hyprland [compat] | update
-aether theme accent <image> | mode <dark|light|auto>
-```
-
-Every command reads the live system, supports `--json`, needs no root (privileged steps run as
-`sudo <shown command>` after confirmation) and logs to `~/.local/state/aether/aether.log`.
-
-## Guides
-
-- [INSTALLATION.md](INSTALLATION.md) — install, dependencies, update, backup/rollback, recovery
-- [docs/DRIVER_GUIDE.md](docs/DRIVER_GUIDE.md) — GPU detection, AMD, Intel, hybrid, CPU
-- [docs/NVIDIA_GUIDE.md](docs/NVIDIA_GUIDE.md) — driver branches, RPM Fusion, akmods, Secure Boot, rollback
-- [docs/HYPRLAND_GUIDE.md](docs/HYPRLAND_GUIDE.md) — config layout, version compatibility, profiles, multi-monitor
-- [docs/KEYBINDS.md](docs/KEYBINDS.md) · [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
-- [ARCHITECTURE.md](ARCHITECTURE.md) · [CHANGELOG.md](CHANGELOG.md) · [TEST_REPORT.md](TEST_REPORT.md)
-- Shell internals: [config/quickshell/aether-shell/ARCHITECTURE.md](config/quickshell/aether-shell/ARCHITECTURE.md)
-
-## Status
-
-What has and hasn't been verified is tracked honestly in [PROGRESS.md](PROGRESS.md) and
-[TEST_REPORT.md](TEST_REPORT.md). In short: scripts, configs and the Python backend are tested
-(shellcheck, Qt qmllint, ~85 unit tests against fixture hardware). The QML shell passes
-syntax/structure/schema checks but has not been run in a live Quickshell session as part of
-this upgrade, and no physical-GPU testing was performed.
+[INSTALLATION](INSTALLATION.md) · [RECOVERY](RECOVERY.md) · [HARDWARE](docs/HARDWARE.md) ·
+[GPU optimisation](docs/GPU_OPTIMIZATION.md) · [Settings](docs/SETTINGS.md) ·
+[Customization](docs/CUSTOMIZATION.md) · [Assistant](docs/AI_ASSISTANT.md) ·
+[Automation](docs/AUTOMATION.md) · [Widgets](docs/WIDGETS.md) · [CLI](docs/CLI_REFERENCE.md) ·
+[Keybinds](docs/KEYBINDS.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) ·
+[NVIDIA](docs/NVIDIA_GUIDE.md) · [Drivers](docs/DRIVER_GUIDE.md) · [Hyprland](docs/HYPRLAND_GUIDE.md) ·
+[Architecture](ARCHITECTURE.md) · [Testing](docs/TESTING.md) · [Test report](TEST_REPORT.md) ·
+[Progress](PROGRESS.md) · [Changelog](CHANGELOG.md) · [Security](SECURITY.md) ·
+[Contributing](CONTRIBUTING.md) · [Code of conduct](CODE_OF_CONDUCT.md)
 
 ## License
 

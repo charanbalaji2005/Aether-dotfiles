@@ -27,7 +27,7 @@ import subprocess
 import sys
 import threading
 import time
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from .hw import cpu as cpu_mod
 from .hw import gpu as gpu_mod
@@ -120,9 +120,56 @@ class Sampler:
         self.freq_files = [p + "/cpufreq/scaling_cur_freq" for p in ctx.glob("/sys/devices/system/cpu/cpu[0-9]*") if ctx.exists(p + "/cpufreq/scaling_cur_freq")]
         self.gpus = self._discover_gpus()
         self._nv_stream: Optional[_NvidiaSmiStream] = None
+        # NVML (in-process, no subprocess) is preferred. It is opened lazily,
+        # only once an NVIDIA GPU is known to be awake (nvmlInit wakes GPUs).
+        self._nvml: Any = None
+        self._nvml_failed = False
+        self.nvml_factory = None  # tests inject a fake here
         nv_desktop = [g for g in self.gpus if g["vendor"] == "nvidia" and g["driver"] == "nvidia" and not g["_runtimePm"]]
-        if stream_nvidia and not processes and nv_desktop and ctx.is_live and ctx.which("nvidia-smi"):
+        if stream_nvidia and not processes and nv_desktop and ctx.is_live and ctx.which("nvidia-smi") and not self._nvml_usable():
             self._nv_stream = _NvidiaSmiStream(int(interval * 1000))
+
+    def _nvml_usable(self) -> bool:
+        if self._nvml is not None:
+            return True
+        if self._nvml_failed or not (self.ctx.is_live or self.nvml_factory):
+            return False
+        try:
+            if self.nvml_factory is not None:
+                self._nvml = self.nvml_factory()
+            else:
+                from . import nvml as nvml_mod
+                self._nvml = nvml_mod.Nvml()
+        except Exception:  # noqa: BLE001 — NvmlUnavailable or a broken library
+            self._nvml_failed = True
+            self._nvml = None
+        return self._nvml is not None
+
+    def _name_processes(self, procs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        for p in procs:
+            p["name"] = (self.ctx.read_line("/proc/%d/comm" % p["pid"]) or "").strip() or None
+        return procs
+
+    def _nvml_transient(self, slot: str) -> Optional[Dict[str, Any]]:
+        """Open NVML, sample one GPU (+ processes), close it again."""
+        try:
+            if self.nvml_factory is not None:
+                lib = self.nvml_factory()
+            elif self.ctx.is_live:
+                from . import nvml as nvml_mod
+                lib = nvml_mod.Nvml()
+            else:
+                return None
+        except Exception:  # noqa: BLE001
+            return None
+        try:
+            row = lib.sample(slot)
+            if row.get("error"):
+                return None
+            row["_processes"] = lib.processes(slot)
+            return row
+        finally:
+            lib.close()
 
     # -- discovery ---------------------------------------------------------
     def _discover_gpus(self) -> List[Dict[str, object]]:
@@ -272,7 +319,34 @@ class Sampler:
                 out["note"] = "telemetry needs the proprietary NVIDIA driver (current: %s)" % (g["driver"] or "none")
                 return out
             row = None
-            if self._nv_stream is not None:
+            if g["_runtimePm"]:
+                # Hybrid laptop dGPU, currently awake. Any open handle (NVML or
+                # nvidia-smi) resets its autosuspend timer, so periodic sampling
+                # would keep it awake forever. Counters are read only while a
+                # detail view asks for them (processes=True), and then with a
+                # transient NVML session that is closed straight away.
+                if not self.processes:
+                    out["note"] = "awake; open the dashboard for live counters (reading them keeps the GPU awake)"
+                    return out
+                row = self._nvml_transient(str(g["slot"]))
+                if row is not None:
+                    out["source"] = "nvml"
+                    out["powerLimitW"] = row.get("powerLimitW")
+                    out["processes"] = self._name_processes(row.pop("_processes", []))
+                    for k in ("usage", "tempC", "vramUsed", "vramTotal", "powerW", "clockMhz"):
+                        out[k] = row.get(k)
+                    return out
+            if row is None and self._nvml_usable() and not g["_runtimePm"]:
+                row = self._nvml.sample(str(g["slot"]))
+                out["source"] = "nvml"
+                if row.get("error"):
+                    out["note"] = row["error"]
+                    row = None
+                else:
+                    out["powerLimitW"] = row.get("powerLimitW")
+                    if self.processes:
+                        out["processes"] = self._name_processes(self._nvml.processes(str(g["slot"])))
+            elif self._nv_stream is not None:
                 row = self._nv_stream.latest.get(str(g["slot"]).lower())
                 if row is None and self._nv_stream.error:
                     out["note"] = "nvidia-smi stream unavailable"
@@ -348,7 +422,10 @@ class Sampler:
         now = time.time()
         data: Dict[str, object] = {"t": round(now, 3)}
         if self.processes:
+            # The detail stream (dashboard / System Centre open): process list
+            # plus full GPU counters, including hybrid dGPUs and GPU processes.
             data["procs"] = self._processes()
+            data["gpus"] = [self._gpu(g) for g in self.gpus]
             return data
         load = (self.ctx.read_line("/proc/loadavg") or "").split()
         up = (self.ctx.read_line("/proc/uptime") or "").split()

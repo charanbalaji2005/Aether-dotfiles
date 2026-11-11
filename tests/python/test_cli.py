@@ -148,7 +148,8 @@ class CommandLine(unittest.TestCase):
         self.assertEqual(r.returncode, 0)
         for cmd in ("system", "hardware", "graphics", "gpu", "cpu", "performance", "diagnostics", "repair"):
             self.assertIn(cmd, r.stdout)
-        self.assertIn("aether 0.", run_cli("--version").stdout)
+        from aether import __version__
+        self.assertEqual(run_cli("--version").stdout.strip(), "aether " + __version__)
 
     def test_hardware_json_against_fixture(self):
         s = fixtures.hybrid_laptop()
@@ -159,6 +160,7 @@ class CommandLine(unittest.TestCase):
         self.assertEqual(data["gpuTopology"]["layout"], "hybrid")
         self.assertEqual(data["cpu"]["vendor"], "Intel")
 
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "the CLI refuses to run this as root (by design)")
     def test_graphics_drivers_and_install_plan_json(self):
         s = fixtures.nvidia_no_driver("GA106 [GeForce RTX 3060]")
         self.addCleanup(s.cleanup)
@@ -170,6 +172,7 @@ class CommandLine(unittest.TestCase):
         self.assertIn("nothing was executed", r.stdout)
         self.assertIn("mokutil --import", r.stdout)
 
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "the CLI refuses to run this as root (by design)")
     def test_install_nvidia_without_tty_does_not_execute(self):
         s = fixtures.nvidia_no_driver("GA106 [GeForce RTX 3060]")
         self.addCleanup(s.cleanup)

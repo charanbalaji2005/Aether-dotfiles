@@ -39,31 +39,23 @@ echo "Whatever's currently in place will be backed up first (via backup.sh),"
 echo "so this is not destructive — but it WILL replace your current configs"
 echo "at the managed paths with the ones from this backup."
 echo
-read -r -p "Continue? [y/N] " reply
-if [ "$reply" != "y" ] && [ "$reply" != "Y" ]; then
-    echo "Aborted."
-    exit 0
+if [ "${2:-}" != "--yes" ]; then
+    read -r -p "Continue? [y/N] " reply || reply=""
+    if [ "$reply" != "y" ] && [ "$reply" != "Y" ]; then
+        echo "Aborted."
+        exit 0
+    fi
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Define strictly allowlisted managed destinations (relative to $HOME)
-ALLOWED_TARGETS=(
-    ".config/hypr"
-    ".config/quickshell/aether-shell"
-    ".config/kitty"
-    ".zshrc"
-    ".config/gtk-3.0/settings.ini"
-    ".config/gtk-3.0/gtk.css"
-    ".config/gtk-4.0/settings.ini"
-    ".config/gtk-4.0/gtk.css"
-    ".config/systemd/user/aether-clipboard.service"
-    ".config/systemd/user/aether-shell.service"
-    ".local/bin/aether"
-    ".local/bin/aether-screenshot"
-    ".local/bin/aether-wallpaper"
-    ".config/aether-shell"
-)
+# Strictly allowlisted managed destinations (relative to $HOME): the shared
+# target list plus AetherOS's own state directory.
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=SCRIPTDIR/lib/common.sh
+. "$REPO_DIR/scripts/lib/common.sh"
+mapfile -t ALLOWED_TARGETS < <(aether_targets_rel)
+ALLOWED_TARGETS+=(".config/aether-shell")
 
 is_path_allowed() {
     local p="$1"
@@ -112,6 +104,16 @@ echo "Restoring..."
 TMP_EXTRACT="$(mktemp -d)"
 tar -xzf "$SAFE_COPY" -C "$TMP_EXTRACT"
 rm -rf "$(dirname "$SAFE_COPY")"
+
+# A managed path that is currently a symlink (into this repository, or
+# anywhere else) must be unlinked before files are copied "into" it —
+# otherwise the copy would follow the link and overwrite the repository's
+# own files. It was captured by the backup taken a moment ago.
+for target in "${ALLOWED_TARGETS[@]}"; do
+    if [ -L "$HOME/$target" ] && [ -e "$TMP_EXTRACT/$target" ] && [ ! -L "$TMP_EXTRACT/$target" ]; then
+        rm "$HOME/$target"
+    fi
+done
 
 # The archive mirrors $HOME-relative paths (see backup.sh); copy each back.
 find "$TMP_EXTRACT" -mindepth 1 | while read -r item; do

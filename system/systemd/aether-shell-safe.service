@@ -1,0 +1,22 @@
+[Unit]
+Description=AetherOS desktop shell — safe mode (no shaders, effects, video wallpaper or automation)
+Documentation=https://github.com/OWNER/aetheros-dotfiles
+PartOf=graphical-session.target
+# Started by aether-shell.service's OnFailure= (never enabled on its own),
+# or by hand:  systemctl --user start aether-shell-safe.service
+Conflicts=aether-shell.service
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+# PerformanceService reads this and disables every optional subsystem.
+Environment=AETHER_SAFE_MODE=1
+ExecStartPre=-/usr/bin/env notify-send -u critical "AetherOS started in safe mode" "The shell failed to start several times. Run: aether recover"
+ExecStart=/usr/bin/env qs -c aether-shell
+Restart=on-failure
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=yes

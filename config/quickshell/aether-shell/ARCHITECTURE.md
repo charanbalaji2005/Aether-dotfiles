@@ -1,103 +1,74 @@
-# Architecture
-
-AetherOS Shell follows a strict one-way dependency chain:
+# AetherOS Shell — architecture
 
 ```
-shell/        (presentation: bars, future launcher/dashboard/etc.)
+shell/        surfaces (windows): bar, dock, island, overview, launcher, panels, lock, settings…
   ↓
-components/   (reusable, theme-aware UI primitives — no system access)
+components/   reusable, theme-aware UI (no system access)
+graphics/     shader materials + WallpaperStage (pure Qt Quick, runtime-tested)
+animation/    SpringValue, SpringBehavior, Reveal, GestureTracker
   ↓
-services/     (reactive wrappers around one system concern each)
+services/     one system concern each; the only files importing Quickshell system modules
   ↓
-Quickshell system-integration modules (Hyprland, Pipewire, UPower, SystemTray, Io)
-  ↓
-Linux / Hyprland / D-Bus / PipeWire / NetworkManager / UPower
+Quickshell (Hyprland, Pipewire, UPower, Bluetooth, Mpris, Notifications, Pam, Wayland, Io)
 ```
 
-`core/` and `theme/` sit outside this chain and are available to every layer: `core/` holds
-cross-cutting concerns (logging, the event bus, config, path resolution), `theme/` holds design
-tokens (color, type, spacing, motion).
+`theme/` (tokens) and `core/` (Config, EventBus, AnimationCoordinator, Logger, Paths,
+ShellState) are available to every layer. **theme/, core/, components/, animation/ and
+graphics/ never import services/** — `shell.qml` is the only bridge: it binds Colors, Materials,
+Metrics, Typography, Motion, Effects and FocusState from Config and PerformanceService. That is
+what lets `tests/shell/runtime` load those layers in plain Qt and test them for real.
 
-## Why this split
+## Design system
 
-- **UI components never talk to the system directly.** A `Capsule` or `AetherIcon` has no idea
-  what PipeWire or Hyprland are. This keeps the component library reusable across every future
-  surface (launcher, dashboard, settings) without rewriting anything.
-- **Every service exposes an `available` property.** UI modules bind their `visible` to it, so a
-  missing dependency (no battery, no `nmcli`, no PipeWire) hides the relevant module instead of
-  showing broken or fake data. This is enforced per-service, not bolted on afterward.
-- **Services are the only files that import Quickshell's system modules**
-  (`Quickshell.Hyprland`, `Quickshell.Services.Pipewire`, `Quickshell.Services.UPower`,
-  `Quickshell.Io`). If PipeWire's QML API changes, exactly one file needs to change.
-
-## Current services (Phase 1)
-
-| Service | Wraps | Notes |
+| Token singleton | Role | Inputs (bound in shell.qml) |
 |---|---|---|
-| `HyprlandService` | `Quickshell.Hyprland` | Reactive workspace/monitor state, `dispatch()` helpers |
-| `AudioService` | `Quickshell.Services.Pipewire` | Default sink/source volume + mute, reactive |
-| `PowerService` | `Quickshell.Services.UPower` | Battery percentage/state via the UPower display device |
-| `NetworkService` | `nmcli` via `Quickshell.Io.Process` | Polled every 5s; no native Quickshell NetworkManager module exists yet, so this talks to the stable `nmcli` CLI rather than parsing D-Bus by hand |
-| `ApplicationService` | `.desktop` files via `Quickshell.Io.Process` | Scans XDG app directories itself and parses the Desktop Entry format; no Quickshell module for this exists |
-| `NotificationService` | `Quickshell.Services.Notifications` | Freedesktop notifications, urgency-based auto-dismiss |
-| `BluetoothService` | `Quickshell.Bluetooth` | Power toggle only in this phase; device list is exposed but not yet wired to a UI |
-| `MediaService` | `Quickshell.Services.Mpris` | First connected MPRIS player; play/pause/next/previous |
-| `ClipboardService` | `cliphist` via `Quickshell.Io.Process` | No Quickshell clipboard-history module exists; wraps the standard wlroots-ecosystem tool |
-| `ScreenshotService` | `grim`/`slurp` via `Quickshell.Io.Process` | Same reasoning as Clipboard — these are the standard tools, not something to reimplement |
-| `SessionService` | `systemctl`/`hyprctl` via `Quickshell.Io.Process` | Power actions only; deliberately has no Wayland dependency — lock is delegated via `EventBus.lockRequested()` so the actual lock surface (`Quickshell.Wayland.WlSessionLock`) stays isolated to `shell/lockscreen/` |
+| `Colors` | every colour, resolved from `Palettes.js`; high-contrast and Okabe–Ito variants | preferDark, palette, accentInput, glassOpacity, highContrast, colorBlind |
+| `Materials` | glass presets → panel opacity, frost, specular | glassStyle, custom opacity, battery |
+| `Metrics` / `Typography` | spacing, radii, sizes, elevation; type scale | uiScale, cornerScale |
+| `Motion` | durations (speed-scaled, zero under reduced motion), stagger, spring presets | reducedMotion, speed, springs |
+| `Effects` | what graphics work is allowed right now | PerformanceService |
 
-Active-window title in the bar is fetched via `hyprctl -j activewindow` (Process) rather than
-guessed QML properties, refreshed on every Hyprland IPC event plus a 2s fallback poll — this
-avoids relying on internal Quickshell type fields that aren't part of its documented public API.
+## Animation engine
 
-## Services added in 0.2.0
+* **SpringValue** — damped harmonic oscillator (stiffness/damping/mass presets in `Motion`),
+  semi-implicit Euler at a fixed 1/240 s sub-step, driven by a `FrameAnimation` that runs only
+  while moving. Retargeting mid-flight keeps velocity (interruptible, continuous motion);
+  `impulse()` feeds gesture velocity. Reduced motion → snap.
+* **SpringBehavior** — Qt's native `SpringAnimation` as a drop-in `Behavior`.
+* **Reveal / MotionCard** — staggered entrances; hover lift; press dip.
+* **GestureTracker** — least-squares pointer velocity over 100 ms.
+* **AnimationCoordinator** — counts running springs, measures frame times *only while
+  animating*, publishes `struggling` → PerformanceService steps quality down (adaptive).
 
-| Service | Wraps | Notes |
-|---|---|---|
-| `SystemMonitorService` (rewritten) | `aether telemetry --stream` (one long-lived process) | CPU/RAM/swap/disk/net/GPU/temps/load/uptime + 60-sample histories; process table only while the dashboard asks; falls back to the original `/proc` polling if the backend can't run |
-| `HardwareService` | `aether hardware --json` (once, lazily) | static facts for the dashboard/About |
-| `ThemeService` | config + `gsettings` + `aether theme accent` + `hyprctl keyword` | dark/light/auto, GTK sync, wallpaper accent, blur override re-applied after config reloads |
-| `BrightnessService` | `brightnessctl` | debounced writes, clamped to ≥1 % |
-| `NightLightService` | `hyprsunset` | on = process running |
-| `PowerProfileService` | `powerprofilesctl` | battery saver / performance |
-| `DisplayService` | `hyprctl -j monitors`, `hyprctl keyword monitor`, `nwg-displays` | runtime scale changes, says so in the UI |
-| `NetworkService` (extended) | `nmcli` | radio, `--rescan no` polling, on-demand scan, connect/disconnect/forget; terse-field escaping handled |
-| `AudioService` (extended) | PipeWire + `wpctl set-default` | device lists, input volume, OSD events |
-| `NotificationService` (extended) | NotificationServer | grouping, unread, single expiry timer, config timeouts, local (shell) notifications |
+## Graphics
 
-## Bridges (the only places layers meet)
+Shaders (`graphics/shaders/*.frag`, Vulkan-style GLSL 440, compiled to `.qsb` with Qt 6.7's
+`qsb`; `scripts/build-shaders.sh` rebuilds for the installed Qt): **glass** (rounded SDF, film
+grain, pointer-following specular, lit rim), **glow** (travelling conic highlight on the edge),
+**aurora** (domain-warped animated gradient), **transition** (fade/wipe/circle/dissolve/
+blinds/zoom), **parallax** (depth-map displacement with refinement taps). `ShaderLibrary`
+resolves URLs, records load failures once, and every wrapper falls back to plain Qt Quick.
+Particles use Qt Quick Particles (GPU instanced), paused whenever hidden.
 
-`shell.qml` binds `Colors.{accent,dark,glassOpacity}`, `Motion.{reducedMotion,speed}` and
-`ShellState.{activeScreen,onBattery}` from Config/services. `theme/`, `core/` and `components/`
-therefore never import `services/`. `PopupPanel` (components) reads `ShellState.activeScreen` to
-open on the focused monitor and listens to `EventBus.closePopups` so only one popup is open.
+## Services added in 0.3
 
-Helpers are always started through `Paths.helper(name, args)` / `Paths.aether(args)`:
-`sh -c 'PATH="$HOME/.local/bin:$PATH"; exec "$0" "$@"' name args…` — arguments are positional,
-never interpolated into the script.
+| Service | Concern |
+|---|---|
+| PerformanceService | effective quality + reasons (settings, `aether capabilities`, safe mode, power, frame pacing, fullscreen) |
+| WindowService | `hyprctl -j clients` on IPC events (debounced); open/close diffs; focus/close/move |
+| ActionService | the allowlisted actions gestures/edges/rules may trigger |
+| AutomationService | rules engine (events from existing services; debounce, re-entry guard, circuit breaker) |
+| TimerService · RecordingService · VisualizerService · IslandService | island providers (timers/focus, `aether-record`, cava on the output monitor, event queue) |
+| VideoWallpaperService | mpvpaper lifecycle (lock, fullscreen, battery, failures) |
+| CliService | queued `aether … --json` calls; ProfileService, LayoutService, SystemService, IdleService build on it |
+| MediaService (rewritten) | player selection (playing first), art, seek, position refresh on demand |
+| PowerService (extended) | battery level state machine + edge-triggered alerts with hysteresis |
 
-## Config
+## Conventions
 
-`core/Config.qml` uses Quickshell's `FileView` + `JsonAdapter` pattern: a JSON file on disk is
-bound directly to QML properties, with automatic reload on external edits and automatic write-back
-on property changes (50ms-debounced internally by Quickshell). Defaults live as literal property
-values in the adapter, so the file is self-documenting on first creation.
-
-## Theme
-
-`theme/Colors.qml`, `Typography.qml`, `Metrics.qml`, and `Motion.qml` are the only place visual
-constants are allowed to live. Components and shell modules reference these tokens; nothing
-hardcodes a hex color or a pixel size outside `theme/`.
-
-## Iconography
-
-Rather than depend on an external icon font or SVG set, `components/AetherIcon.qml` draws a small
-original vector icon kit directly with `QtQuick.Canvas` (workspace dot, volume states, wifi/
-ethernet, battery). This keeps Phase 1 dependency-free; a fuller icon set can replace or extend it
-later without changing how components consume `AetherIcon`.
-
-## What's deliberately not here yet
-
-Service lifecycle states beyond `available` (`loading`/`error`/`disabled`), the event bus is wired
-but only partially used, and the config engine isn't yet consumed by every module. These are
-Phase 2+ items — see PROGRESS.md.
+* Every service exposes `available`; UI hides or explains unavailable features.
+* Helpers run through `Paths.helper(name, args)` — arguments positional, never interpolated.
+* Windows use explicit layer namespaces `aether-*` (Hyprland rules match them).
+* Version-sensitive Quickshell types live in their own file loaded via `Loader.source`
+  (e.g. `shell/overview/WindowPreview.qml`).
+* Settings sections are separate files under `shell/settings/sections/`, loaded on demand.

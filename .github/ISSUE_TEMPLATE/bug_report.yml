@@ -1,0 +1,33 @@
+name: Bug report
+description: Something in AetherOS doesn't work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please check [TROUBLESHOOTING](../../docs/TROUBLESHOOTING.md) and [RECOVERY](../../RECOVERY.md) first.
+        **Never paste API keys or passwords** — `aether diagnostics` and `aether logs` already redact them, but review before posting.
+  - type: textarea
+    id: what
+    attributes: { label: "What happened, and what did you expect?" }
+    validations: { required: true }
+  - type: textarea
+    id: steps
+    attributes: { label: "Steps to reproduce" }
+  - type: input
+    id: version
+    attributes: { label: "AetherOS version", description: "`aether --version` (or the git commit)" }
+    validations: { required: true }
+  - type: input
+    id: fedora
+    attributes: { label: "Fedora release and Hyprland version", placeholder: "Fedora 44, Hyprland 0.53.1" }
+    validations: { required: true }
+  - type: input
+    id: gpu
+    attributes: { label: "GPU(s) and driver", placeholder: "RTX 4050 Laptop (nvidia 580.95) + Intel iGPU" }
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: "Output of `aether diagnostics` and `aether logs --shell --lines 80` (review it first)."
+      render: text

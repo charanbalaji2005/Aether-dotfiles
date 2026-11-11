@@ -123,6 +123,7 @@ Singleton {
             if (!Config.ready) return;
             root.evaluate();
             root.applyCompositorBlur();
+            paletteDebounce.restart();
         }
     }
 
@@ -133,5 +134,32 @@ Singleton {
     onAccentModeSettingChanged: if (root.accentModeSetting === "wallpaper") root.accentFromWallpaper(root.wallpaperPath)
     onIsDarkChanged: if (root.accentModeSetting === "wallpaper") root.accentFromWallpaper(root.wallpaperPath)
 
-    Component.onCompleted: evaluate()
+    // ── Terminal + Hyprland border colours ────────────────────────────
+    // `aether theme apply` writes the palette into kitty/foot/alacritty/
+    // ghostty theme includes and Hyprland's theme.conf (and reloads kitty).
+    // Debounced so dragging through accent presets runs it once.
+    readonly property string _paletteKey: (Config.appearance.palette || "aether") + "|" + Config.appearance.accent + "|" + root.isDark
+    property string _paletteApplied: ""
+    on_PaletteKeyChanged: if (Config.ready) paletteDebounce.restart()
+    Timer {
+        id: paletteDebounce
+        interval: 800
+        onTriggered: {
+            if (root._paletteKey === root._paletteApplied) return;
+            root._paletteApplied = root._paletteKey;
+            CliService.run("theme-apply", ["theme", "apply", "--mode", root.isDark ? "dark" : "light", "--json"], function(ok, data, err) {
+                if (!ok) Logger.warn("ThemeService", "terminal/Hyprland theme sync failed: " + err);
+            });
+        }
+    }
+
+    // Custom themes (aether themes create/import), validated by the backend.
+    property var userPalettes: ({})
+    function reloadUserPalettes() {
+        CliService.run("user-themes", ["themes", "list", "--json"], function(ok, data) {
+            if (ok && data && typeof data === "object") root.userPalettes = data;
+        });
+    }
+
+    Component.onCompleted: { evaluate(); reloadUserPalettes(); }
 }

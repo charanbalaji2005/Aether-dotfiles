@@ -204,6 +204,48 @@ Item {
                 _rrect(ctx, 5, 10.5, 14, 10, 2); ctx.stroke();
                 ctx.beginPath(); ctx.moveTo(8, 10.5); ctx.lineTo(8, 7.5); ctx.arc(12, 7.5, 4, Math.PI, 0); ctx.lineTo(16, 10.5); ctx.stroke();
                 break;
+            case "clipboard":
+                _rrect(ctx, 5.5, 5, 13, 16, 2); ctx.stroke();
+                _rrect(ctx, 9, 3, 6, 4, 1.2); ctx.stroke();
+                _line(ctx, 9, 12, 15, 12); _line(ctx, 9, 16, 13, 16);
+                break;
+            case "camera":
+                _rrect(ctx, 3, 7, 13, 10, 2); ctx.stroke();
+                _poly(ctx, [16, 10.5, 21, 7.5, 21, 16.5, 16, 13.5], true, false);
+                break;
+            case "keyboard":
+                _rrect(ctx, 2.5, 6, 19, 12, 2); ctx.stroke();
+                for (let kx = 6; kx <= 18; kx += 4) { _line(ctx, kx, 10, kx + 0.01, 10); }
+                _line(ctx, 8, 14.5, 16, 14.5);
+                break;
+            case "mouse":
+                _rrect(ctx, 7, 3.5, 10, 17, 5); ctx.stroke();
+                _line(ctx, 12, 7, 12, 10);
+                break;
+            case "sparkle":
+                _poly(ctx, [12, 3, 13.8, 10.2, 21, 12, 13.8, 13.8, 12, 21, 10.2, 13.8, 3, 12, 10.2, 10.2], true, false);
+                _line(ctx, 19, 3.5, 19, 6.5); _line(ctx, 17.5, 5, 20.5, 5);
+                break;
+            case "widgets":
+                _rrect(ctx, 3.5, 3.5, 7.5, 7.5, 1.6); ctx.stroke();
+                _rrect(ctx, 13, 3.5, 7.5, 7.5, 1.6); ctx.stroke();
+                _rrect(ctx, 3.5, 13, 7.5, 7.5, 1.6); ctx.stroke();
+                _circle(ctx, 16.75, 16.75, 3.75, false);
+                break;
+            case "shield":
+                _poly(ctx, [12, 3, 19.5, 6, 19, 12.5, 12, 21, 5, 12.5, 4.5, 6], true, false);
+                _poly(ctx, [9, 12, 11.2, 14.2, 15.5, 9.8], false, false);
+                break;
+            case "archive":
+                _rrect(ctx, 3.5, 4, 17, 5, 1.2); ctx.stroke();
+                _poly(ctx, [5, 9, 5, 20, 19, 20, 19, 9], false, false);
+                _line(ctx, 10, 13, 14, 13);
+                break;
+            case "code":
+                _poly(ctx, [8.5, 7, 3.5, 12, 8.5, 17], false, false);
+                _poly(ctx, [15.5, 7, 20.5, 12, 15.5, 17], false, false);
+                _line(ctx, 13.5, 5, 10.5, 19);
+                break;
             case "logout":
                 _poly(ctx, [10, 4, 5, 4, 5, 20, 10, 20], false, false);
                 _line(ctx, 10, 12, 20, 12);

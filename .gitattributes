@@ -1,6 +1,7 @@
 * text=auto eol=lf
-*.jpg binary
-*.jpeg binary
+*.qsb binary
 *.png binary
+*.jpg binary
 *.webp binary
-*.gif binary
+lib/aether/_schema_data.py linguist-generated=true
+docs/CLI_REFERENCE.md linguist-generated=true

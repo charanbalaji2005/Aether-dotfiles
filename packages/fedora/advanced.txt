@@ -1,0 +1,21 @@
+# Advanced / heavier optional features ("complete" mode only).
+
+# Live video wallpapers
+mpvpaper
+mpv
+
+# Audio visualiser in the island
+cava
+
+# Screenshot annotation
+satty
+
+# Polished shell profile helpers
+fzf
+zoxide
+fastfetch
+starship
+
+# Rendering diagnostics (`aether render --probe`)
+egl-utils
+vulkan-tools

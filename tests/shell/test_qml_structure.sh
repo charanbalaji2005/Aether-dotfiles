@@ -21,10 +21,8 @@ echo
 
 for f in "${QML_FILES[@]}"; do
     rel="${f#"$SHELL_DIR"/}"
-    open_brace=$(grep -o '{' "$f" | wc -l); open_brace=${open_brace:-0}
-    close_brace=$(grep -o '}' "$f" | wc -l); close_brace=${close_brace:-0}
-    open_paren=$(grep -o '(' "$f" | wc -l); open_paren=${open_paren:-0}
-    close_paren=$(grep -o ')' "$f" | wc -l); close_paren=${close_paren:-0}
+    # Counted on code only (strings and comments removed): see qml_balance.py.
+    read -r open_brace close_brace open_paren close_paren < <(python3 "$REPO_DIR/tests/shell/qml_balance.py" "$f")
 
     ok=1
     if [ "$open_brace" -ne "$close_brace" ]; then
@@ -39,6 +37,13 @@ for f in "${QML_FILES[@]}"; do
     # Every `import "../something"` should resolve to a real directory
     # relative to this file's own location.
     while IFS= read -r imp; do
+        if [[ "$imp" == *.js ]]; then
+            if [ ! -f "$(dirname "$f")/$imp" ]; then
+                echo "FAIL: $rel — import \"$imp\" does not resolve to a real file"
+                ok=0
+            fi
+            continue
+        fi
         target_dir="$(cd "$(dirname "$f")/$imp" 2>/dev/null && pwd)"
         if [ -z "$target_dir" ]; then
             echo "FAIL: $rel — import \"$imp\" does not resolve to a real directory"
@@ -51,6 +56,9 @@ for f in "${QML_FILES[@]}"; do
 done
 
 echo
+# Directory imports for every shell type that is used.
+python3 "$REPO_DIR/tests/shell/qml_imports.py" "$SHELL_DIR" || failed=1
+
 if [ "$failed" -eq 0 ]; then
     echo "PASS: all ${#QML_FILES[@]} QML files structurally sound"
 else

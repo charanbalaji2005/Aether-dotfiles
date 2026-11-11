@@ -1,0 +1,38 @@
+#!/usr/bin/bash
+# aether-clip-store — the clipboard history writer (run by aether-clipboard.service
+# as `wl-paste --watch aether-clip-store`). Reads one clipboard selection on
+# stdin and stores it with cliphist UNLESS:
+#   * the source marked it secret — password managers (KeePassXC, Bitwarden,
+#     1Password…) offer the `x-kde-passwordManagerHint: secret` type, or
+#   * the focused window's class is excluded in Settings → Privacy
+#     (privacy.clipboardExcludeApps). Copies happen in the focused window
+#     almost always, so that's the source being judged.
+# The content is never logged or inspected beyond the MIME type list.
+
+set -uo pipefail
+CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/aether-shell/config.json"
+
+if wl-paste --list-types 2>/dev/null | grep -qx 'x-kde-passwordManagerHint'; then
+    if [ "$(wl-paste --type x-kde-passwordManagerHint 2>/dev/null)" = "secret" ]; then
+        cat >/dev/null
+        exit 0
+    fi
+fi
+
+if [ -r "$CONFIG" ] && command -v hyprctl >/dev/null 2>&1; then
+    cls="$(hyprctl -j activewindow 2>/dev/null | sed -n 's/^ *"class": *"\([^"]*\)".*/\1/p' | head -1)"
+    if [ -n "$cls" ] && python3 - "$CONFIG" "$cls" <<'PY'
+import json, sys
+try:
+    excluded = json.load(open(sys.argv[1])).get("privacy", {}).get("clipboardExcludeApps", [])
+except Exception:
+    excluded = []
+sys.exit(0 if sys.argv[2].lower() in {str(e).lower() for e in excluded} else 1)
+PY
+    then
+        cat >/dev/null
+        exit 0
+    fi
+fi
+
+exec cliphist store

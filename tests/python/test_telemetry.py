@@ -77,8 +77,61 @@ class Telemetry(unittest.TestCase):
         s.cmd("nvidia-smi --query-gpu=pci.bus_id,utilization.gpu,temperature.gpu,memory.used,memory.total,power.draw,clocks.gr "
               "--format=csv,noheader,nounits -i 0000:01:00.0",
               "00000000:01:00.0, 23, 51, 512, 4096, 9.85, 1395\n")
-        nv = [g for g in telemetry.Sampler(s.ctx()).sample()["gpus"] if g["vendor"] == "nvidia"][0]
+        # Bar-level sampling must not touch an awake hybrid dGPU (any query
+        # resets its autosuspend timer and would keep it awake).
+        ctx = s.ctx()
+        nv = [g for g in telemetry.Sampler(ctx).sample()["gpus"] if g["vendor"] == "nvidia"][0]
+        self.assertIsNone(nv["usage"])
+        self.assertIn("keeps the GPU awake", nv["note"])
+        self.assertFalse(any(c.startswith("nvidia-smi") for c in ctx.calls), ctx.calls)
+        # A detail view (processes=True) gets one-shot counters (nvidia-smi here: no NVML in fixtures).
+        nv = [g for g in telemetry.Sampler(s.ctx(), processes=True).sample()["gpus"] if g["vendor"] == "nvidia"][0]
         self.assertEqual((nv["usage"], nv["tempC"], nv["vramTotal"]), (0.23, 51.0, 4096 * 1048576))
+
+    def test_nvml_preferred_on_desktop_gpu(self):
+        s = fixtures.nvidia_desktop()
+        self.addCleanup(s.cleanup)
+        fake = FakeNvml()
+        sm = telemetry.Sampler(s.ctx(), processes=True)
+        sm.nvml_factory = lambda: fake
+        g = sm.sample()["gpus"][0]
+        self.assertEqual(g["source"], "nvml")
+        self.assertEqual((g["usage"], g["vramUsed"], g["powerLimitW"]), (0.42, 2 << 30, 115.0))
+        self.assertEqual(g["processes"][0]["pid"], 4242)
+        self.assertFalse([c for c in sm.ctx.calls if c.startswith("nvidia-smi")], "no subprocess when NVML works")
+        self.assertEqual(fake.closed, 0, "desktop GPUs keep one NVML session")
+
+    def test_nvml_on_hybrid_is_transient_and_only_for_detail_views(self):
+        s = fixtures.hybrid_laptop()
+        self.addCleanup(s.cleanup)
+        s.file("/sys/bus/pci/devices/0000:01:00.0/power/runtime_status", "active\n")
+        opened = []
+
+        def factory():
+            f = FakeNvml()
+            opened.append(f)
+            return f
+        bar = telemetry.Sampler(s.ctx())
+        bar.nvml_factory = factory
+        bar.sample()
+        self.assertEqual(opened, [], "bar sampling never opens NVML on a hybrid dGPU")
+        detail = telemetry.Sampler(s.ctx(), processes=True)
+        detail.nvml_factory = factory
+        g = [x for x in detail.sample()["gpus"] if x["vendor"] == "nvidia"][0]
+        self.assertEqual(g["usage"], 0.42)
+        self.assertEqual(len(opened), 1)
+        self.assertEqual(opened[0].closed, 1, "the session is closed right after the sample")
+
+    def test_nvml_failure_falls_back(self):
+        s = fixtures.nvidia_desktop()
+        self.addCleanup(s.cleanup)
+
+        def broken():
+            raise OSError("no libnvidia-ml")
+        sm = telemetry.Sampler(s.ctx())
+        sm.nvml_factory = broken
+        g = sm.sample()["gpus"][0]
+        self.assertNotEqual(g.get("source"), "nvml")
 
     def test_nvidia_without_smi_explains(self):
         s = fixtures.nvidia_desktop()
@@ -126,3 +179,21 @@ class Telemetry(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FakeNvml:
+    """Stands in for aether.nvml.Nvml in tests (the real one needs the driver)."""
+
+    def __init__(self):
+        self.closed = 0
+
+    def sample(self, slot):
+        return {"usage": 0.42, "memUsage": 0.1, "vramUsed": 2 << 30, "vramTotal": 6 << 30, "tempC": 55.0,
+                "powerW": 21.5, "powerLimitW": 115.0, "clockMhz": 1800.0}
+
+    def processes(self, slot):
+        return [{"pid": 4242, "vram": 300 << 20, "kind": "graphics"}]
+
+    def close(self):
+        self.closed += 1
+

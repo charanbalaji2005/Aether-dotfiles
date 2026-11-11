@@ -6,7 +6,9 @@ After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/env bash -c 'wl-paste --watch cliphist store'
+# aether-clip-store skips secrets (password-manager hint) and excluded apps.
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/env wl-paste --watch aether-clip-store
 Restart=on-failure
 RestartSec=2
 

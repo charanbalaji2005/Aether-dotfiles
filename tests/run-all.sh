@@ -11,9 +11,12 @@ SUITES=(
     "tests/hyprland/test_config_syntax.sh"
     "tests/shell/test_qml_structure.sh"
     "tests/shell/test_qml_lint.sh"
+    "tests/shell/test_security_invariants.sh"
+    "tests/shell/runtime/run_runtime_tests.sh"
     "tests/config/test_config_files.sh"
     "tests/python/run_python_tests.sh"
     "tests/integration/test_symlink_lifecycle.sh"
+    "tests/integration/test_installer.sh"
 )
 
 failed_suites=()
@@ -49,7 +52,8 @@ echo
 echo "  All suites passed."
 echo
 echo "  Not covered by this run (see tests/services/README.md and TEST_REPORT.md):"
-echo "    - Live QML/Quickshell runtime behavior (needs a running Quickshell + Wayland session)"
+echo "    - Quickshell-dependent QML (layer-shell windows, Hyprland IPC, PipeWire, PAM) — the"
+echo "      runtime suite covers the pure-Qt engine (springs, shaders, wallpaper stage, components)"
 echo "    - Real GPUs/drivers: hardware detection is tested against fixture sysfs trees;"
 echo "      on a real machine run: aether graphics verify && aether diagnostics"
 echo "    - Anything requiring an actual Hyprland session, Bluetooth adapter, or PAM auth"

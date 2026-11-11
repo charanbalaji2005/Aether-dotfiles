@@ -158,7 +158,16 @@ Quickshell session** as part of this phase. Treat as DONE-pending-live-test.
 | Video wallpapers (mpvpaper etc.) | NOT STARTED — GIF only, by design (cost) |
 | External-monitor brightness (DDC/CI) | NOT STARTED |
 
-## Not started yet (future phases)
+## Phase 9 — 0.3.0 engine and surfaces
+
+See the top-level `PROGRESS.md` for the authoritative status table. Summary: animation engine,
+shader materials, wallpaper stage and components are RENDER-TESTED (tests/shell/runtime);
+dock, island, overview, system centre, layouts, gestures, automation, profiles, new settings
+sections and the rewritten lock screen are IMPLEMENTED, pending a live session. Several items
+listed below as not started are now done (overview, wallpaper engine, notification grouping,
+accessibility options, diagnostics page = System centre).
+
+## Not started yet (as of 0.2 — see top-level PROGRESS.md for 0.3)
 
 Overview, widget framework (Dashboard's contents are still fixed, not pluggable), wallpaper
 engine, full accessibility pass (focus indicators, scalable text, screen-reader labels),

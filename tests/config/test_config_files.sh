@@ -16,9 +16,18 @@ command -v "$PY" >/dev/null 2>&1 || PY=python
 # ── systemd units ──────────────────────────────────────────────────────
 for unit in "$REPO_DIR"/system/systemd/*.service; do
     name="$(basename "$unit")"
-    for sect in Unit Service Install; do
+    for sect in Unit Service; do
         grep -q "^\[$sect\]" "$unit" || fail "$name has no [$sect] section"
     done
+    # [Install] is required unless the unit is only ever started by another
+    # unit's OnFailure= (the safe-mode fallback must never be enabled itself).
+    if ! grep -q "^\[Install\]" "$unit"; then
+        if grep -qs "^OnFailure=$name" "$REPO_DIR"/system/systemd/*.service; then
+            pass "$name has no [Install] on purpose (started via OnFailure=)"
+        else
+            fail "$name has no [Install] section"
+        fi
+    fi
     grep -q "^ExecStart=" "$unit" || fail "$name has no ExecStart"
     # StartLimit* belong to [Unit]; in [Service] systemd ignores them with a warning.
     if awk '/^\[Service\]/{s=1;next} /^\[/{s=0} s && /^StartLimit/' "$unit" | grep -q .; then
@@ -81,6 +90,38 @@ if missing or unknown_sections:
     sys.exit(1)
 print("PASS: all %d Config.<section>.<key> references are declared in the schema" % len(used))
 PYEOF
+
+# ── Generated files are current (schema data, CLI reference) ──────────
+if "$PY" "$REPO_DIR/tools/gen_schema.py" --check && "$PY" "$REPO_DIR/tools/gen_cli_reference.py" --check; then
+    pass "generated files are up to date"
+else
+    failed=1
+fi
+
+# ── IPC functions: every "target function" pair called from keybinds, the
+#    CLI, hypridle and generated touchpad gestures is declared by an IpcHandler.
+if PYTHONPATH="$REPO_DIR/lib" "$PY" - "$REPO_DIR" <<'PYEOF'
+import os, re, sys
+repo = sys.argv[1]
+shell = os.path.join(repo, "config/quickshell/aether-shell")
+handlers = {}
+for d, _, fs in os.walk(shell):
+    for f in fs:
+        if f.endswith(".qml"):
+            t = open(os.path.join(d, f), encoding="utf-8").read()
+            for m in re.finditer(r"IpcHandler\s*\{\s*target:\s*\"([a-z]+)\"(.*?)\n    \}", t, re.S):
+                handlers.setdefault(m.group(1), set()).update(re.findall(r"function (\w+)\(", m.group(2)))
+calls = set(re.findall(r"\$shell ([a-z]+) ([a-z]+)", open(os.path.join(repo, "config/hypr/keybinds.conf")).read()))
+calls |= set(re.findall(r"ipc call ([a-z]+) ([a-z]+)", open(os.path.join(repo, "scripts/bin/aether")).read()))
+from aether.graphics import hyprconf
+calls |= {tuple(v.split()) for v in hyprconf._SWIPE_IPC.values()}
+calls |= set(re.findall(r"ipc call ([a-z]+) ([a-z]+)", hyprconf.generate_idle_conf(1, 1, 1)))
+bad = sorted("%s %s" % c for c in calls if c[1] not in handlers.get(c[0], set()))
+if bad:
+    print("FAIL: IPC calls with no matching IpcHandler function: " + ", ".join(bad)); sys.exit(1)
+print("PASS: %d IPC calls (keybinds, CLI, gestures, hypridle) all resolve to a handler function" % len(calls))
+PYEOF
+then :; else failed=1; fi
 
 # ── IPC targets used by keybinds / CLI exist in the shell ─────────────
 targets="$(grep -rhoE 'target: "[a-z]+"' "$SHELL_DIR" --include=*.qml | sed -E 's/target: "([a-z]+)"/\1/' | sort -u)"
