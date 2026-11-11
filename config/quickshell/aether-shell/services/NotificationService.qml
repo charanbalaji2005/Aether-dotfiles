@@ -100,6 +100,7 @@ Singleton {
 
         onNotification: function(notification) {
             notification.tracked = true;
+            const rule = root.ruleFor(notification.appName || "");
             root._record({
                 summary: notification.summary || notification.appName || "Notification",
                 body: notification.body || "",
@@ -110,7 +111,14 @@ Singleton {
                 time: new Date().toISOString()
             });
 
-            if (root.doNotDisturb && notification.urgency !== NotificationUrgency.Critical) {
+            if (rule.mode === "mute") {
+                // Kept in history (so nothing is lost), never shown or heard.
+                notification.tracked = false;
+                return;
+            }
+            const priority = rule.mode === "priority" || notification.urgency === NotificationUrgency.Critical;
+            if (priority) EventBus.islandEvent("notification", { text: (notification.appName ? notification.appName + ": " : "") + (notification.summary || "") });
+            if (root.doNotDisturb && !priority) {
                 Logger.info("NotificationService", "Suppressed by Do Not Disturb: " + (notification.summary || ""));
                 notification.tracked = false;
                 return;
@@ -124,7 +132,42 @@ Singleton {
                 });
             }
             root._show(notification, notification.urgency, notification.expireTimeout);
+            if (rule.sound !== false) root.playSound(notification.urgency === NotificationUrgency.Critical ? "critical" : "normal");
         }
+    }
+
+    // ── Per-app rules (Settings → Notifications) ──────────────────────
+    // mode: "normal" | "priority" (shown and heard even in Do Not Disturb,
+    // also surfaced in the island) | "mute" (history only). Matched on the
+    // sender's app name, case-insensitively.
+    function ruleFor(appName) {
+        const a = (appName || "").toLowerCase();
+        const r = (Config.notifications.appRules || []).find(function(x) { return x.app.toLowerCase() === a; });
+        return r || { mode: "normal", sound: true };
+    }
+    function setRule(appName, mode, sound) {
+        const list = (Config.notifications.appRules || []).filter(function(x) { return x.app.toLowerCase() !== appName.toLowerCase(); });
+        if (mode !== "normal" || sound === false) list.push({ app: appName.replace(/[^\w.+-]/g, ""), mode: mode, sound: sound !== false });
+        Config.notifications.appRules = list;
+    }
+    readonly property var knownApps: {
+        const seen = {}, out = [];
+        for (const h of root.history) if (h.appName && !seen[h.appName]) { seen[h.appName] = true; out.push(h.appName); }
+        for (const r of (Config.notifications.appRules || [])) if (!seen[r.app]) { seen[r.app] = true; out.push(r.app); }
+        return out.sort();
+    }
+
+    // ── Sounds: the freedesktop sound theme via canberra-gtk-play or pw-play ──
+    Process { id: soundProcess }
+    property real _lastSound: 0
+    function playSound(kind) {
+        if (!Config.privacy.notificationSounds || (root.doNotDisturb && kind !== "critical")) return;
+        const now = Date.now();
+        if (now - root._lastSound < 1500 || soundProcess.running) return;   // no machine-gun dings
+        root._lastSound = now;
+        const id = kind === "critical" ? "dialog-warning" : "message-new-instant";
+        soundProcess.command = ["sh", "-c", 'if command -v canberra-gtk-play >/dev/null; then exec canberra-gtk-play -i "$1"; fi; f="/usr/share/sounds/freedesktop/stereo/$1.oga"; [ -f "$f" ] && command -v pw-play >/dev/null && exec pw-play "$f"; exit 0', "sh", id];
+        soundProcess.running = true;
     }
 
     Connections {

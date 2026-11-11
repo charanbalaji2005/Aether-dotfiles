@@ -198,6 +198,7 @@ Singleton {
             exec: fields.Exec,
             argv: argv,
             icon: fields.Icon || "",
+            wmClass: fields.StartupWMClass || "",
             categories: (fields.Categories || "").split(";").filter(function(c) { return c.length > 0; }),
             keywords: (fields.Keywords || "").split(";").filter(function(c) { return c.length > 0; }).join(" ").toLowerCase(),
             terminal: fields.Terminal === "true",
@@ -211,7 +212,7 @@ Singleton {
         Logger.info("ApplicationService", "Launching " + app.name + " (" + app.argv[0] + ")");
         // execDetached: the app must outlive the shell (restarting the shell
         // must never kill your browser).
-        Quickshell.execDetached(app.terminal ? ["kitty", "-e"].concat(app.argv) : app.argv);
+        Quickshell.execDetached(app.terminal ? Paths.helper("aether-terminal", ["-e"].concat(app.argv)) : app.argv);
         root.recordLaunch(app);
     }
 
@@ -242,6 +243,25 @@ Singleton {
     }
 
     function favorites() { return root._byIds(Config.launcher.favorites); }
+
+    // The desktop entry a window belongs to, from its class: StartupWMClass,
+    // then the entry id (org.gnome.Nautilus.desktop ↔ class
+    // org.gnome.Nautilus), then the id's last segment, then the name.
+    function forClass(cls) {
+        if (!cls) return null;
+        const c = cls.toLowerCase();
+        const apps = root.applications;
+        return apps.find(function(a) { return a.wmClass && a.wmClass.toLowerCase() === c; })
+            || apps.find(function(a) { return a.id.toLowerCase() === c + ".desktop"; })
+            || apps.find(function(a) { const id = a.id.toLowerCase().replace(/\.desktop$/, ""); return id.split(".").pop() === c.split(".").pop(); })
+            || apps.find(function(a) { return a.name.toLowerCase() === c; })
+            || null;
+    }
+    // Window class for an app (inverse of forClass, used to find its windows).
+    function classMatches(app, cls) {
+        const hit = root.forClass(cls);
+        return hit !== null && app !== null && hit.id === app.id;
+    }
     function recents() { return root._byIds(Config.launcher.recents); }
 
     // Freedesktop main categories, mapped to short labels.

@@ -1,0 +1,41 @@
+#!/usr/bin/bash
+# aether-terminal — start the preferred terminal (Settings → Terminal).
+#
+#   aether-terminal                 open a terminal
+#   aether-terminal -e cmd args…    run a command in it
+#
+# The preference is read from config.json with a fixed pattern match (the
+# value can only be one of the known names below); "auto" or a missing
+# terminal falls back through the list. Every terminal's own syntax for
+# "run this command" is handled here so callers can always use -e.
+
+set -euo pipefail
+
+CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/aether-shell/config.json"
+KNOWN=(kitty ghostty wezterm alacritty foot ptyxis gnome-terminal)
+
+preferred=""
+if [ -r "$CONFIG" ]; then
+    preferred="$(grep -oE '"preferred"[[:space:]]*:[[:space:]]*"(kitty|ghostty|wezterm|alacritty|foot|ptyxis|gnome-terminal)"' "$CONFIG" | head -1 | sed -E 's/.*"([a-z-]+)"$/\1/' || true)"
+fi
+
+pick=""
+for t in "$preferred" "${KNOWN[@]}"; do
+    [ -n "$t" ] && command -v "$t" >/dev/null 2>&1 && { pick="$t"; break; }
+done
+if [ -z "$pick" ]; then
+    command -v notify-send >/dev/null 2>&1 && notify-send -u critical "No terminal found" "Install one: sudo dnf install kitty" || true
+    echo "aether-terminal: no supported terminal installed" >&2
+    exit 127
+fi
+
+if [ "${1:-}" = "-e" ]; then
+    shift
+    case "$pick" in
+        gnome-terminal|ptyxis) exec "$pick" -- "$@" ;;
+        wezterm) exec wezterm start -- "$@" ;;
+        ghostty) exec ghostty -e "$@" ;;
+        *) exec "$pick" -e "$@" ;;
+    esac
+fi
+exec "$pick" "$@"

@@ -241,31 +241,137 @@ def compat_conf_path() -> str:
     return os.path.join(fragment_dir(), "compat.conf")
 
 
-def generate_compat_conf(ctx: Context) -> str:
+def theme_conf_path() -> str:
+    return os.path.join(fragment_dir(), "theme.conf")
+
+
+def idle_conf_path() -> str:
+    return os.path.join(fragment_dir(), "hypridle.conf")
+
+
+# Shell actions a touchpad swipe may trigger -> Quickshell IPC call.
+# Fixed table: the value written into the config is never user text.
+_SWIPE_IPC = {
+    "overview": "overview toggle",
+    "launcher": "launcher toggle",
+    "controlcenter": "controlcenter toggle",
+    "dashboard": "dashboard toggle",
+    "notifications": "notifications toggle",
+    "clipboard": "clipboard toggle",
+    "powermenu": "powermenu toggle",
+    "lock": "sessionlock lock",
+    "dock": "dock toggle",
+    "assistant": "assistant toggle",
+    "layouts": "layouts toggle",
+    "systemcenter": "systemcenter toggle",
+}
+
+
+def _shell_gestures() -> Dict[str, object]:
+    """The gestures section of config.json (defaults when unreadable)."""
+    from .. import config as config_mod
+    out = dict(config_mod.defaults()["gestures"])
+    data, _err = config_mod.load()
+    if data:
+        clean, _problems = config_mod.validate({"gestures": data.get("gestures", {})})
+        out.update(clean.get("gestures", {}))
+    return out
+
+
+def generate_compat_conf(ctx: Context, gestures: Optional[Dict[str, object]] = None) -> str:
     """Settings whose syntax depends on the installed Hyprland version.
 
-    Hyprland 0.51 replaced the `gestures { workspace_swipe = ... }` options
-    with the `gesture =` keyword; writing the wrong one is a config error.
+    * 0.51 replaced `gestures { workspace_swipe = ... }` with the `gesture =`
+      keyword (which can also run a dispatcher, used for the overview).
+    * 0.53 rewrote window/layer rule syntax, so the matching rules file is
+      sourced from here: rules.conf (legacy) or rules-v2.conf.
+
+    Writing the wrong variant is a config error (Hyprland still starts, with
+    an error banner), so nothing is written when the version is unknown.
     """
     ver = parse_version(system.hyprland_version(ctx))
     vtxt = ".".join(map(str, ver)) if ver else "unknown"
-    head = (
-        "%s hyprland compat` on %s for Hyprland %s.\n"
-        "# Version-dependent syntax only. Regenerate after upgrading Hyprland:\n"
-        "#   aether hyprland compat\n\n"
-    ) % (HEADER_MARK, time.strftime("%Y-%m-%d %H:%M"), vtxt)
+    g = gestures if gestures is not None else _shell_gestures()
+    out = [
+        "%s hyprland compat` on %s for Hyprland %s." % (HEADER_MARK, time.strftime("%Y-%m-%d %H:%M"), vtxt),
+        "# Version-dependent syntax only. Regenerate after upgrading Hyprland or",
+        "# changing gestures in Settings:   aether hyprland compat",
+        "",
+    ]
     if ver is None:
-        return head + "# Hyprland version unknown: touchpad workspace gestures left unset.\n"
+        out += ["# Hyprland version unknown: gestures and window/layer rules left unset.",
+                "# Install Hyprland, then run: aether hyprland compat"]
+        return "\n".join(out) + "\n"
+
+    out.append("# Window and layer rules (the shell's glass surfaces need the layer rules).")
+    out.append("source = ~/.config/hypr/%s" % ("rules-v2.conf" if version_at_least(ver, (0, 53)) else "rules.conf"))
+    out.append("")
+
     if version_at_least(ver, (0, 51)):
-        return head + "# Three-finger horizontal swipe switches workspaces.\ngesture = 3, horizontal, workspace\n"
-    return head + "gestures {\n    workspace_swipe = true\n    workspace_swipe_fingers = 3\n}\n"
+        if g.get("workspaceSwipe", True):
+            out += ["# Three-finger horizontal swipe switches workspaces.", "gesture = 3, horizontal, workspace"]
+        for direction, key in (("up", "swipeUp"), ("down", "swipeDown")):
+            ipc = _SWIPE_IPC.get(str(g.get(key, "none")))
+            if ipc:
+                out.append("gesture = 3, %s, dispatcher, exec, qs -c aether-shell ipc call %s" % (direction, ipc))
+    else:
+        if g.get("workspaceSwipe", True):
+            out += ["gestures {", "    workspace_swipe = true", "    workspace_swipe_fingers = 3", "}"]
+        if any(_SWIPE_IPC.get(str(g.get(k, "none"))) for k in ("swipeUp", "swipeDown")):
+            out.append("# Vertical swipe actions need Hyprland 0.51 or newer (this is %s)." % vtxt)
+    return "\n".join(out).rstrip() + "\n"
+
+
+def compat_is_stale(ctx: Context, path: str) -> bool:
+    """True when compat.conf is missing, a placeholder, or was written for a
+    different Hyprland version than the one installed now."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            head = fh.readline()
+    except OSError:
+        return True
+    if not head.startswith(HEADER_MARK):
+        return True
+    ver = parse_version(system.hyprland_version(ctx))
+    vtxt = ".".join(map(str, ver)) if ver else "unknown"
+    return not head.rstrip().endswith("for Hyprland %s." % vtxt)
+
+
+def generate_idle_conf(lock_minutes: int, dpms_minutes: int, suspend_minutes: int, dim_minutes: int = 0) -> str:
+    """hypridle configuration from the lock-screen settings. 0 disables a stage.
+    `dim_minutes` dims the backlight (brightnessctl saves and restores it)."""
+    out = [
+        "%s idle apply` on %s." % (HEADER_MARK, time.strftime("%Y-%m-%d %H:%M")),
+        "# Read by hypridle (aether-idle.service). Change the timings in",
+        "# Settings → Lock screen; hand edits are overwritten.",
+        "general {",
+        "    lock_cmd = qs -c aether-shell ipc call sessionlock lock",
+        "    before_sleep_cmd = loginctl lock-session",
+        "    after_sleep_cmd = hyprctl dispatch dpms on",
+        "}",
+    ]
+    if dim_minutes > 0:
+        out += ["", "listener {", "    timeout = %d" % (dim_minutes * 60), "    on-timeout = brightnessctl -s set 30%",
+                "    on-resume = brightnessctl -r", "}"]
+    if lock_minutes > 0:
+        out += ["", "listener {", "    timeout = %d" % (lock_minutes * 60), "    on-timeout = loginctl lock-session", "}"]
+    if dpms_minutes > 0:
+        out += ["", "listener {", "    timeout = %d" % (dpms_minutes * 60), "    on-timeout = hyprctl dispatch dpms off",
+                "    on-resume = hyprctl dispatch dpms on", "}"]
+    if suspend_minutes > 0:
+        out += ["", "listener {", "    timeout = %d" % (suspend_minutes * 60), "    on-timeout = systemctl suspend", "}"]
+    return "\n".join(out) + "\n"
 
 
 def ensure_defaults() -> List[str]:
     """Create empty-but-valid fragments if missing so `source =` never fails."""
     created = []
     for path, what in ((hardware_conf_path(), "graphics configure"), (profile_conf_path(), "performance hyprland <profile>"),
-                       (compat_conf_path(), "hyprland compat")):
+                       (compat_conf_path(), "hyprland compat"), (theme_conf_path(), "theme apply"),
+                       (os.path.join(fragment_dir(), "input.conf"), "input apply"),
+                       (os.path.join(fragment_dir(), "displays.conf"), "display apply"),
+                       (os.path.join(fragment_dir(), "apprules.conf"), "workspace rules"),
+                       (os.path.join(fragment_dir(), "cursor.conf"), "theme cursor --set <theme>")):
         if not os.path.exists(path):
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w", encoding="utf-8", newline="\n") as fh:

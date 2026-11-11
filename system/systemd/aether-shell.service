@@ -1,12 +1,16 @@
 [Unit]
-Description=AetherOS Quickshell Desktop Environment Shell
-Documentation=https://github.com/aetheros/aetheros-dotfiles
+Description=AetherOS desktop shell (Quickshell)
+Documentation=https://github.com/OWNER/aetheros-dotfiles
 PartOf=graphical-session.target
 After=graphical-session.target
-# Stop restart loops if the QML is broken (5 failures in 30s), so a bad edit
-# doesn't spin the CPU; `aether shell-reload` starts it again.
-StartLimitIntervalSec=30
-StartLimitBurst=5
+# A broken shell must not spin the CPU: after 4 failed starts in 40 s systemd
+# gives up on this unit and starts the safe-mode shell instead (OnFailure),
+# so there is always a panel and a launcher on screen. `aether recover`
+# explains what happened; `aether shell-reload` returns to the normal shell.
+StartLimitIntervalSec=40
+StartLimitBurst=4
+OnFailure=aether-shell-safe.service
+Conflicts=aether-shell-safe.service
 
 [Service]
 Type=simple
@@ -19,6 +23,8 @@ Restart=on-failure
 RestartSec=1
 StandardOutput=journal
 StandardError=journal
+# The shell is an ordinary user program: it needs no new privileges.
+NoNewPrivileges=yes
 
 [Install]
 WantedBy=graphical-session.target

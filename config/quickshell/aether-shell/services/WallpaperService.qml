@@ -15,6 +15,63 @@ Singleton {
     property string currentTitle: ""
     property var wallpapers: [] // [{ path, filename, title, uri }]
     property real dimOverlay: Config.ready && Config.appearance ? (Config.appearance.wallpaperDim || 0.0) : 0.0
+    // image path without extension -> depth map path (<name>.depth.png next to it)
+    property var depthMaps: ({})
+    // Transition chosen for the change in progress (resolves "random").
+    property string activeTransition: "fade"
+    readonly property var transitions: ["fade", "zoom", "slide", "wipe", "circle", "dissolve", "blinds"]
+
+    function depthFor(path) {
+        if (!path) return "";
+        const base = path.replace(/\.[^./]+$/, "");
+        return root.depthMaps[base] || "";
+    }
+
+    function _pickTransition() {
+        const t = Config.wallpaper.transition || "fade";
+        if (t !== "random") return t;
+        const opts = root.transitions.filter(function(x) { return x !== root.activeTransition; });
+        return opts[Math.floor(Math.random() * opts.length)];
+    }
+
+    // ── Favourites ────────────────────────────────────────────────────
+    function isFavorite(path) { return (Config.wallpaper.favorites || []).indexOf(path) >= 0; }
+    function toggleFavorite(path) {
+        const f = (Config.wallpaper.favorites || []).slice();
+        const i = f.indexOf(path);
+        if (i >= 0) f.splice(i, 1); else f.push(path);
+        Config.wallpaper.favorites = f;
+    }
+
+    // ── Scheduling ────────────────────────────────────────────────────
+    // "interval": next wallpaper (favourites if any, else all) every N
+    // minutes. "daynight": day/night wallpapers at the theme's auto hours.
+    // One timer, only while a schedule is on.
+    readonly property string schedule: Config.wallpaper.schedule || "off"
+    Timer {
+        running: root.schedule === "interval" && root.available
+        interval: Math.max(1, Config.wallpaper.intervalMinutes) * 60000
+        repeat: true
+        onTriggered: {
+            const favs = (Config.wallpaper.favorites || []).filter(function(f) { return root.wallpapers.some(function(w) { return w.path === f; }); });
+            if (favs.length > 1) {
+                const i = favs.indexOf(root.currentWallpaper);
+                root.setWallpaper(favs[(i + 1) % favs.length]);
+            } else root.nextWallpaper();
+        }
+    }
+    Timer {
+        running: root.schedule === "daynight"
+        interval: 60000
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: {
+            const h = new Date().getHours();
+            const day = h >= Config.appearance.autoLightFrom && h < Config.appearance.autoDarkFrom;
+            const want = day ? Config.wallpaper.dayWallpaper : Config.wallpaper.nightWallpaper;
+            if (want && want.length > 0 && want !== root.currentWallpaper) root.setWallpaper(want);
+        }
+    }
 
     readonly property string _scanScript: [
         'for d in "$HOME/.config/aether-shell/wallpapers" "$HOME/.local/share/wallpapers/aetheros" "$HOME/.local/share/wallpapers" "$HOME/Pictures/Wallpapers" /usr/share/wallpapers /usr/share/backgrounds; do',
@@ -56,8 +113,15 @@ Singleton {
         const seen = {};
         const result = [];
 
+        const depth = {};
+        for (const path of lines) {
+            const m = path.match(/^(.*)\.depth\.(png|jpe?g|webp)$/i);
+            if (m) depth[m[1]] = path;
+        }
+        root.depthMaps = depth;
         for (const path of lines) {
             const filename = path.split("/").pop();
+            if (/\.depth\.(png|jpe?g|webp)$/i.test(filename)) continue;
             if (seen[filename]) continue;
             seen[filename] = true;
 
@@ -86,6 +150,7 @@ Singleton {
     }
 
     function _setCurrent(path, notify) {
+        if (path !== root.currentWallpaper) root.activeTransition = root._pickTransition();
         root.currentWallpaper = path;
         const filename = path.split("/").pop();
         root.currentTitle = root._humanizeTitle(filename);

@@ -1,0 +1,115 @@
+#!/usr/bin/bash
+# aether-record — screen recording with wf-recorder.
+#
+#   aether-record start [full|region] [--audio]   begin recording
+#   aether-record stop                            finish and save
+#   aether-record toggle [full|region] [--audio]  start, or stop if running
+#   aether-record status                          JSON: {"available","recording","file","seconds"}
+#
+# Files go to ~/Videos/Recordings/recording-<timestamp>.mp4. One recording
+# at a time; the PID file lives in $XDG_RUNTIME_DIR so a crash or logout
+# can't leave a stale "recording" indicator behind (it is validated against
+# the running process on every call).
+#
+# --audio records the default *output* (what you hear), never the
+# microphone, and only when asked for.
+
+set -euo pipefail
+
+RUNTIME="${XDG_RUNTIME_DIR:-/tmp}"
+PID_FILE="$RUNTIME/aether-record.pid"
+META_FILE="$RUNTIME/aether-record.meta"
+OUT_DIR="${XDG_VIDEOS_DIR:-$HOME/Videos}/Recordings"
+
+running_pid() {
+    local pid
+    [ -f "$PID_FILE" ] || return 1
+    pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+    [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+    # The PID must still be wf-recorder (PIDs get reused).
+    [ "$(cat "/proc/$pid/comm" 2>/dev/null || true)" = "wf-recorder" ] || return 1
+    echo "$pid"
+}
+
+status() {
+    local available=false recording=false file="" secs=0 pid started
+    command -v wf-recorder >/dev/null 2>&1 && available=true
+    if pid="$(running_pid)"; then
+        recording=true
+        file="$(sed -n 1p "$META_FILE" 2>/dev/null || true)"
+        started="$(sed -n 2p "$META_FILE" 2>/dev/null || echo 0)"
+        [[ "$started" =~ ^[0-9]+$ ]] && secs=$(( $(date +%s) - started ))
+    else
+        rm -f "$PID_FILE" "$META_FILE"
+    fi
+    # File names are generated here (digits and dashes only), so plain
+    # interpolation is safe JSON.
+    printf '{"available": %s, "recording": %s, "file": "%s", "seconds": %d}\n' "$available" "$recording" "$file" "$secs"
+}
+
+start() {
+    local mode="full" audio=0 arg geometry file
+    for arg in "$@"; do
+        case "$arg" in
+            full|region) mode="$arg" ;;
+            --audio) audio=1 ;;
+            *) echo "aether-record: unknown argument '$arg'" >&2; exit 2 ;;
+        esac
+    done
+    if ! command -v wf-recorder >/dev/null 2>&1; then
+        echo "aether-record: wf-recorder is not installed (sudo dnf install wf-recorder)" >&2
+        exit 127
+    fi
+    if running_pid >/dev/null; then
+        echo "aether-record: already recording" >&2
+        exit 1
+    fi
+    mkdir -p "$OUT_DIR"
+    file="$OUT_DIR/recording-$(date +%Y%m%d-%H%M%S).mp4"
+    local args=(-f "$file")
+    if [ "$mode" = "region" ]; then
+        command -v slurp >/dev/null 2>&1 || { echo "aether-record: slurp is needed to select a region" >&2; exit 127; }
+        geometry="$(slurp)" || exit 0   # Escape pressed: not an error
+        args+=(-g "$geometry")
+    fi
+    if [ "$audio" -eq 1 ]; then
+        # The monitor of the default sink = system audio. Not the microphone.
+        local monitor=""
+        if command -v pactl >/dev/null 2>&1; then
+            monitor="$(pactl get-default-sink 2>/dev/null || true)"
+        fi
+        if [ -n "$monitor" ]; then args+=("--audio=$monitor.monitor"); else args+=(--audio); fi
+    fi
+    wf-recorder "${args[@]}" >/dev/null 2>&1 &
+    echo "$!" > "$PID_FILE"
+    printf '%s\n%s\n' "$file" "$(date +%s)" > "$META_FILE"
+    disown
+    status
+}
+
+stop() {
+    local pid file
+    if ! pid="$(running_pid)"; then
+        rm -f "$PID_FILE" "$META_FILE"
+        echo "aether-record: not recording" >&2
+        exit 1
+    fi
+    file="$(sed -n 1p "$META_FILE" 2>/dev/null || true)"
+    kill -INT "$pid" 2>/dev/null || true   # SIGINT: wf-recorder finalises the file
+    for _ in $(seq 1 50); do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 0.1
+    done
+    rm -f "$PID_FILE" "$META_FILE"
+    command -v notify-send >/dev/null 2>&1 && notify-send -a "Screen recording" "Recording saved" "$file" || true
+    echo "$file"
+}
+
+case "${1:-status}" in
+    start) shift; start "$@" ;;
+    stop) stop ;;
+    toggle) shift; if running_pid >/dev/null; then stop; else start "$@"; fi ;;
+    status) status ;;
+    -h|--help|help) sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+    *) echo "aether-record: unknown command '$1'" >&2; exit 2 ;;
+esac

@@ -190,6 +190,11 @@ Scope {
         function onClosePopups(except) { if (except !== "aether-clipboard" && window.visible) window.close(); }
     }
 
+    Connections {
+        target: EventBus
+        function onClipboardRequested() { window.toggleVisible(); }
+    }
+
     IpcHandler {
         target: "clipboard"
         function toggle(): void { window.toggleVisible(); }

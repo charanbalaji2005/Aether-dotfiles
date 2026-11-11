@@ -205,18 +205,20 @@ class HyprlandHardwareConf(unittest.TestCase):
 
 
 class CompatConf(unittest.TestCase):
-    def _for(self, tag):
+    DEFAULT_GESTURES = {"workspaceSwipe": True, "swipeUp": "none", "swipeDown": "none"}
+
+    def _for(self, tag, gestures=None):
         s = fixtures.nvidia_desktop()
         self.addCleanup(s.cleanup)
         if tag is None:
             s.bins.discard("hyprctl")
         else:
             s.cmd("hyprctl version -j", '{"tag": "%s"}' % tag)
-        return active_lines(hyprconf.generate_compat_conf(s.ctx()))
+        return active_lines(hyprconf.generate_compat_conf(s.ctx(), gestures or self.DEFAULT_GESTURES))
 
     def test_new_gesture_syntax_from_0_51(self):
-        self.assertEqual(self._for("v0.51.0"), ["gesture = 3, horizontal, workspace"])
-        self.assertEqual(self._for("v0.53.1"), ["gesture = 3, horizontal, workspace"])
+        self.assertIn("gesture = 3, horizontal, workspace", self._for("v0.51.0"))
+        self.assertIn("gesture = 3, horizontal, workspace", self._for("v0.53.1"))
 
     def test_old_gesture_syntax_before_0_51(self):
         lines = self._for("v0.46.2")
@@ -225,6 +227,31 @@ class CompatConf(unittest.TestCase):
 
     def test_unknown_version_writes_nothing_risky(self):
         self.assertEqual(self._for(None), [])
+
+    def test_rules_file_matches_the_rule_syntax_version(self):
+        self.assertIn("source = ~/.config/hypr/rules.conf", self._for("v0.52.2"))
+        self.assertIn("source = ~/.config/hypr/rules-v2.conf", self._for("v0.53.0"))
+        self.assertNotIn("source = ~/.config/hypr/rules.conf", self._for("v0.53.0"))
+
+    def test_vertical_swipes_dispatch_fixed_ipc_calls(self):
+        lines = self._for("v0.51.0", {"workspaceSwipe": False, "swipeUp": "overview", "swipeDown": "notifications"})
+        self.assertIn("gesture = 3, up, dispatcher, exec, qs -c aether-shell ipc call overview toggle", lines)
+        self.assertIn("gesture = 3, down, dispatcher, exec, qs -c aether-shell ipc call notifications toggle", lines)
+        self.assertNotIn("gesture = 3, horizontal, workspace", lines)
+
+    def test_unknown_swipe_action_writes_nothing(self):
+        lines = self._for("v0.51.0", {"workspaceSwipe": False, "swipeUp": "$(reboot)", "swipeDown": "none"})
+        self.assertFalse([l for l in lines if l.startswith("gesture")])
+
+    def test_old_hyprland_explains_missing_vertical_swipes(self):
+        text = hyprconf.generate_compat_conf(self._ctx("v0.48.0"), {"workspaceSwipe": True, "swipeUp": "overview", "swipeDown": "none"})
+        self.assertIn("need Hyprland 0.51", text)
+
+    def _ctx(self, tag):
+        s = fixtures.nvidia_desktop()
+        self.addCleanup(s.cleanup)
+        s.cmd("hyprctl version -j", '{"tag": "%s"}' % tag)
+        return s.ctx()
 
 
 class Verify(unittest.TestCase):

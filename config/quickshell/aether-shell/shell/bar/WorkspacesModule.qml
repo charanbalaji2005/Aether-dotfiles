@@ -1,6 +1,9 @@
 import QtQuick
 import "../../theme"
+import "../../animation"
 import "../../services"
+import "../../core"
+import "../../components"
 
 // Workspace indicators. The focused workspace is a wide accent pill that
 // slides/grows into place; others are dots that reveal their number on
@@ -44,22 +47,40 @@ Rectangle {
                     && HyprlandService.focusedWorkspace.id === modelData.id
                 readonly property bool hovered: area.containsMouse
 
-                width: focused ? 26 : (hovered ? 18 : 10)
-                height: hovered && !focused ? 16 : 10
+                // Names and icons from Settings → Workspaces. The focused pill
+                // grows to show them; others stay compact dots.
+                readonly property string wsName: (Config.workspaces.names || {})[String(modelData.id)] || ""
+                readonly property string wsIcon: (Config.workspaces.icons || {})[String(modelData.id)] || ""
+                readonly property bool labelled: focused && (wsName.length > 0 || wsIcon.length > 0)
+                width: labelled ? labelRow.implicitWidth + 16 : focused ? 26 : (hovered ? 18 : (wsIcon ? 14 : 10))
+                height: labelled ? 16 : hovered && !focused ? 16 : (wsIcon && !focused ? 14 : 10)
                 radius: Metrics.radiusPill
                 anchors.verticalCenter: parent.verticalCenter
                 color: focused ? Colors.accent
                     : hovered ? Colors.withAlpha(Colors.textPrimary, 0.35)
                     : Colors.withAlpha(Colors.textMuted, 0.55)
 
-                Behavior on width { enabled: !Motion.reducedMotion; NumberAnimation { duration: Motion.normal; easing.type: Motion.easeSpring } }
+                SpringBehavior on width { preset: "snappy" }
                 Behavior on height { enabled: !Motion.reducedMotion; NumberAnimation { duration: Motion.fast } }
                 Behavior on color { enabled: !Motion.reducedMotion; ColorAnimation { duration: Motion.fast } }
 
+                Row {
+                    id: labelRow
+                    anchors.centerIn: parent
+                    spacing: 4
+                    visible: dot.labelled
+                    AetherIcon { visible: dot.wsIcon.length > 0; width: 10; height: 10; anchors.verticalCenter: parent.verticalCenter; name: dot.wsIcon; color: Colors.onAccent }
+                    Text { visible: dot.wsName.length > 0; text: dot.wsName; color: Colors.onAccent; font.family: Typography.family; font.pixelSize: 10; font.weight: Typography.weightBold; anchors.verticalCenter: parent.verticalCenter }
+                }
+                AetherIcon {
+                    anchors.centerIn: parent
+                    visible: !dot.focused && !dot.hovered && dot.wsIcon.length > 0
+                    width: 8; height: 8; name: dot.wsIcon; color: Colors.bg0
+                }
                 Text {
                     anchors.centerIn: parent
                     visible: dot.hovered && !dot.focused
-                    text: dot.modelData.id
+                    text: dot.wsName || dot.modelData.id
                     color: Colors.textPrimary
                     font.family: Typography.family
                     font.pixelSize: 9

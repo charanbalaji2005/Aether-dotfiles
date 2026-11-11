@@ -3,6 +3,111 @@
 Dates reflect when each phase was built, not calendar releases — this hasn't been tagged/released
 yet (see top-level `PROGRESS.md` for current status before treating anything below as "shipped").
 
+## 1.0.0-rc.1 — 2026-11-11
+
+Release candidate for 1.0. Feature-complete and tested in CI-style environments; **not yet
+validated on physical hardware** — see docs/HARDWARE.md for the checklist that gates 1.0.0.
+
+### GPU and rendering
+- NVIDIA telemetry through NVML (ctypes, no subprocess, no root): usage, VRAM, temperature,
+  power and power limit, clocks, per-GPU processes with names. `nvidia-smi` remains the fallback.
+- Hybrid laptops: the dGPU is queried only while a detail view is open, through a session closed
+  after each sample, so it can runtime-suspend (the 0.2 polling kept it awake).
+- GPU-pressure policy with hysteresis (VRAM/load thresholds) steps effects down and back up.
+- New "performance" quality tier; `aether render` diagnostics (files only; `--probe` optional).
+
+### Desktop
+- Assistant (`SUPER+Y`): Ollama or OpenAI-compatible, streaming, local-only by default, keys in
+  the keyring, proposals from a validated action registry that run only on click, audit log.
+- Desktop widgets with a permission-filtered API, static capability checks, 7 built-ins,
+  `aether widget install|remove`, edit mode (`SUPER+SHIFT+Y`).
+- Dynamic Island 2.0: microphone/camera in use (PipeWire), network and VPN, screenshots,
+  clipboard, messages from scripts (`aether island post`), history, durations.
+- Launcher: Settings and action results, file search (`/`), terminal commands (`>`, Enter only),
+  search history (never commands or paths).
+- Settings: 11 new sections (28 total) and search — keyboard (XKB-validated), mouse & touchpad,
+  displays (auto-revert unless kept, profiles per monitor set), workspaces (names, icons,
+  per-workspace wallpaper, app rules, session restore), widgets, GPU & rendering, privacy &
+  security, AI assistant, startup apps (XDG autostart), backup & recovery, developer.
+- Custom colour themes (editor + `aether themes`), 6 new palettes (OLED, Midnight, Aurora, Frost,
+  Minimal, High Contrast); motion profiles; gradient and aurora wallpapers.
+- Notifications: per-app normal/priority/mute and sounds. Clipboard privacy: password-manager
+  secrets never stored, excluded apps, scheduled clearing. Automatic power saver, idle dimming.
+- Dock window previews and recent apps; automation rules with multiple actions, startup and
+  profile triggers.
+
+### Publishing
+- `tools/set-repo-url.sh`, generated `docs/CLI_REFERENCE.md`, issue/PR templates, release
+  workflow, code of conduct, `.editorconfig`/`.gitattributes`, PUBLISHING.md, new guides
+  (HARDWARE, GPU_OPTIMIZATION, SETTINGS, AI_ASSISTANT, AUTOMATION, WIDGETS, TESTING).
+
+### Fixed (found by the new tests)
+- Widget scanner: comment stripping removed `//` inside strings, hiding `"file:///…"` URLs.
+- Redaction missed single-quoted `api_key: '…'`.
+- Schema generator truncated string defaults containing `//` (URLs).
+- Assistant registry was missing the `widgets` settings section (contract test).
+
+### Upgrading from 0.3
+`./install.sh --update`. Settings migrate to schema 4 (a snapshot is taken first). The
+clipboard service now runs `aether-clip-store`; re-enable user services if you manage them by hand.
+
+## 0.3.0 — 2026-11-11
+
+The production and experience release: a real installer lifecycle, a recovery story, an
+original animation/graphics engine, and the desktop surfaces built on it.
+
+### Installer, recovery, configuration
+- `install.sh --check | --dry-run | --install | --update | --uninstall | --rollback`, install
+  modes, per-package availability checks against enabled repositories (DNF5/DNF4), consent-gated
+  COPR (`repos.conf`), resumable steps, lock file, logs, and an install manifest that rollback
+  uses to move originals back. `scripts/bootstrap.sh` and `scripts/update.sh` now wrap it.
+- One managed-path list (`scripts/lib/common.sh`) for setup, backup, restore and uninstall
+  (they had drifted apart).
+- `aether-shell-safe.service`: started automatically when the shell crash-loops.
+- Config schema generated from `Config.qml`; validation, migrations (v1→v3), import/export,
+  `aether config get/set`; config.json is written 0600.
+- Snapshots with SHA-256 manifests, preview diffs, last-known-good, undo-before-restore;
+  `aether recover`, `aether safe-mode`.
+- The shell re-acquires the session lock after a crash while locked
+  (`misc:allow_session_lock_restore`).
+
+### Engine
+- Physics springs (interruptible, idle-free), native spring behaviours, staggered reveals,
+  gesture velocity tracking, frame-pacing measurement and adaptive quality.
+- Five original GLSL shaders (glass, glow, aurora, transitions, depth parallax) with fallbacks;
+  `scripts/build-shaders.sh`; `aether capabilities` (sysfs only, never wakes a dGPU).
+- Design system: 12 palettes shared with terminals and Hyprland borders, glass presets, UI and
+  corner scaling, high-contrast and colour-blind modes, elevation.
+
+### Desktop
+- New: Dynamic Island, dock, overview / exposé, system centre, smart window layouts, edge
+  gestures, configurable touchpad swipes, automation engine, desktop profiles, screen
+  recording (`aether-record`), timers and focus sessions, audio visualiser (cava, output only).
+- Wallpaper engine: 7 transitions, depth-map parallax, ambient particles/aurora, schedules,
+  favourites, mpvpaper video with lifecycle rules.
+- Lock screen: four clock styles, blurred wallpaper + aurora, media/battery/notification count,
+  failure feedback; hardened PAM flow (see Fixed).
+- Battery: 8 icon families, thresholds, per-state colours, alerts with hysteresis.
+- Settings: 11 new sections (17 total). Icon/cursor theme switching, terminal settings, Zsh
+  profiles (incl. a custom file, e.g. a Meridian Shell config), `aether-terminal`.
+- Media: player selection prefers the playing player; artwork; seek.
+- Hyprland: version-selected rules (`rules.conf` / `rules-v2.conf`), compat regenerated at
+  login when Hyprland changes, palette borders, cursor fragment, new keybinds.
+
+### Fixed
+- Lock screen: a PAM *error* left the password field disabled forever; responses relied on
+  `this` in a signal handler. Now explicit, with a 30 s timeout; password cleared after each try.
+- Zsh plugins were loaded from Arch paths and never worked on Fedora.
+- kitty `allow_remote_control yes` let escape sequences control the terminal → `socket-only`.
+- Dashboard and system centre would have fought over the process-list flag (now ref-counted).
+- `snap()` in early spring code leaked the animation counter (caught by the runtime tests).
+- A `focus` property in the depth-image component collided with `Item.focus` (FINAL) and would
+  have prevented the wallpaper from loading (caught by the runtime tests).
+
+### Tests
+- New: runtime QML suite (Qt Quick + OpenGL on Mesa/Xvfb, pixel assertions), security
+  invariants, installer lifecycle, 46 desktop backend tests, rule/keybind/contract checks.
+
 ## 0.2.0 — Hardware-aware desktop upgrade (2026-11-09)
 
 ### Added — AetherOS CLI backend (`lib/aether/`, Python 3.9+, standard library only)

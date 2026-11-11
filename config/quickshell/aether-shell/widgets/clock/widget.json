@@ -1,0 +1,19 @@
+{
+  "aetherWidget": 1,
+  "id": "clock",
+  "name": "Clock",
+  "version": "1.0.0",
+  "api": 1,
+  "entry": "Widget.qml",
+  "description": "Time and date.",
+  "author": "AetherOS",
+  "license": "GPL-3.0-or-later",
+  "size": {
+    "w": 240,
+    "h": 130
+  },
+  "permissions": [
+    "time"
+  ],
+  "requires": []
+}

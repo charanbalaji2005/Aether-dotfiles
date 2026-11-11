@@ -8,11 +8,11 @@
 # not a verified package.
 
 pkgname=aetheros-dotfiles
-pkgver=0.1.0
+pkgver=1.0.0rc1
 pkgrel=1
 pkgdesc="AetherOS Hyprland dotfiles and Quickshell desktop shell"
 arch=('any')
-url="https://github.com/example/aetheros-dotfiles"
+url="https://github.com/OWNER/aetheros-dotfiles"
 license=('GPL-3.0-or-later')
 depends=('hyprland' 'kitty' 'zsh' 'python')
 optdepends=('pciutils: GPU model names' 'vulkan-tools: aether graphics detect' 'libva-utils: VA-API checks' 'hyprsunset: night light' 'power-profiles-daemon: power modes' 'imagemagick: accent from wallpaper')

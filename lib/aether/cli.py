@@ -21,12 +21,14 @@ import sys
 import time
 from typing import Dict, List, Optional
 
-from . import __version__, performance, telemetry, theme
+from . import __version__, cli_desktop, cli_v1, performance, telemetry, theme
 from .graphics import hyprconf, nvidia, report, stack
 from .hw import cpu as cpu_mod
 from .hw import gpu as gpu_mod
 from .hw import system
 from .util import Context, Output, confirm, default_context, get_logger, is_root, state_dir
+from .util import parse_version as util_parse_version
+from .util import version_at_least as util_version_at_least
 
 REPO_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -610,7 +612,8 @@ def cmd_performance(ctx: Context, args) -> int:
             sys.stderr.write("unknown Hyprland profile %r (choose: %s)\n" % (name, ", ".join(performance.HYPR_PROFILES)))
             return 2
         path = hyprconf.profile_conf_path()
-        text = performance.render_hypr_profile(name)
+        hver = util_parse_version(system.hyprland_version(ctx))
+        text = performance.render_hypr_profile(name, bool(hver and util_version_at_least(hver, (0, 53))))
         if args.dry_run:
             out.write(text)
             return 0
@@ -627,6 +630,9 @@ def cmd_performance(ctx: Context, args) -> int:
 # -- theme ---------------------------------------------------------------------
 
 def cmd_theme(ctx: Context, args) -> int:
+    handled = cli_desktop.cmd_theme_extra(ctx, args)
+    if handled is not None:
+        return handled
     out = Output()
     if args.theme_cmd == "accent":
         colour, err = theme.extract_accent(ctx, args.image, args.mode)
@@ -838,6 +844,8 @@ def cmd_repair(ctx: Context, args) -> int:
 def cmd_hyprland(ctx: Context, args) -> int:
     if getattr(args, "hypr_cmd", None) == "compat":
         path = hyprconf.compat_conf_path()
+        if getattr(args, "if_stale", False) and not hyprconf.compat_is_stale(ctx, path):
+            return 0
         text = hyprconf.generate_compat_conf(ctx)
         if args.dry_run:
             sys.stdout.write(text)
@@ -928,6 +936,8 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("--apply", action="store_true", help="write it to the shell config")
     x = ts.add_parser("mode", help="set the shell theme")
     x.add_argument("mode", choices=("dark", "light", "auto"))
+    cli_desktop.register(sub, add, ts)
+    cli_v1.register(sub, add)
 
     sp = add("telemetry", "live metrics as JSON (used by the shell)")
     sp.add_argument("--stream", action="store_true", help="one JSON line per interval until stdout closes")
@@ -944,6 +954,7 @@ def build_parser() -> argparse.ArgumentParser:
     hs.add_parser("verify", help="check the config with Hyprland itself").add_argument("--json", action="store_true")
     x = hs.add_parser("compat", help="write settings whose syntax depends on the Hyprland version")
     x.add_argument("--dry-run", action="store_true")
+    x.add_argument("--if-stale", action="store_true", help="only if Hyprland's version changed or the file is a placeholder (used at login)")
     x.add_argument("--json", action="store_true")
     return p
 
@@ -970,6 +981,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         "repair": cmd_repair,
         "hyprland": cmd_hyprland,
     }
+    handlers.update(cli_desktop.HANDLERS)
+    handlers.update(cli_v1.HANDLERS)
+    for key, value in list(cli_desktop.DEFAULTS.items()) + list(cli_v1.DEFAULTS.items()):
+        if not hasattr(args, key):
+            setattr(args, key, value)
     if args.command == "gpu" and not hasattr(args, "gpu_cmd"):
         args.gpu_cmd = None
     if args.command == "graphics" and getattr(args, "graphics_cmd", None) is None:

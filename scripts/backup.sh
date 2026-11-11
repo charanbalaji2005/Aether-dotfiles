@@ -10,23 +10,16 @@ TIMESTAMP="$(date +%Y%m%d-%H%M%S-%N)"
 BACKUP_ROOT="$HOME/.aetheros-backups"
 BACKUP_DIR="$BACKUP_ROOT/$TIMESTAMP"
 
-TARGETS=(
-    "$HOME/.config/hypr"
-    "$HOME/.config/quickshell/aether-shell"
-    "$HOME/.config/kitty"
-    "$HOME/.zshrc"
-    "$HOME/.config/gtk-3.0/settings.ini"
-    "$HOME/.config/gtk-3.0/gtk.css"
-    "$HOME/.config/gtk-4.0/settings.ini"
-    "$HOME/.config/gtk-4.0/gtk.css"
-    "$HOME/.config/systemd/user/aether-clipboard.service"
-    "$HOME/.config/systemd/user/aether-shell.service"
-    "$HOME/.local/bin/aether"
-    "$HOME/.local/bin/aether-screenshot"
-    "$HOME/.local/bin/aether-wallpaper"
-    "$HOME/.config/aether-shell/wallpapers"
+# shellcheck source=SCRIPTDIR/lib/common.sh
+. "$REPO_DIR/scripts/lib/common.sh"
+mapfile -t TARGETS < <(aether_targets)
+# Per-machine state that isn't a symlink target but belongs in a backup.
+TARGETS+=(
     "$HOME/.config/aether-shell/config.json"
     "$HOME/.config/aether-shell/hypr"
+    "$HOME/.config/aether-shell/terminal"
+    "$HOME/.config/aether-shell/layouts.json"
+    "$HOME/.config/aether-shell/profiles"
 )
 
 mkdir -p "$BACKUP_DIR"

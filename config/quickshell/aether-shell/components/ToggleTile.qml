@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import "../theme"
+import "../animation"
 
 // Control-centre tile: icon + title + status line. Clicking the body
 // toggles; the optional chevron opens details (e.g. the Wi-Fi network list).
@@ -30,6 +31,10 @@ Rectangle {
     border.color: Colors.withAlpha(Colors.border, 0.7)
 
     Behavior on color { enabled: !Motion.reducedMotion; ColorAnimation { duration: Motion.normal } }
+
+    scale: press.value
+    SpringValue { id: press; preset: "bouncy"; target: body.pressed ? 0.95 : 1.0 }
+    Component.onCompleted: press.snap(1.0)
 
     readonly property color fg: active ? Colors.onAccent : Colors.textPrimary
 

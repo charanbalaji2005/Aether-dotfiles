@@ -64,4 +64,20 @@ Singleton {
     }
 
     Component.onCompleted: refresh()
+
+    // Retention (Settings → Privacy): cliphist keeps no timestamps, so the
+    // honest implementation is a periodic full wipe every N hours.
+    Timer {
+        interval: Math.max(1, Config.privacy.clipboardRetentionHours) * 3600000
+        running: Config.privacy.clipboardRetentionHours > 0 && root.available
+        repeat: true
+        onTriggered: { Logger.info("ClipboardService", "Retention period reached: clearing clipboard history"); root.wipe(); }
+    }
+    // A new entry appeared (watched via the history list refresh) → island, if enabled.
+    property int _lastCount: -1
+    onEntriesChanged: {
+        if (root._lastCount >= 0 && root.entries.length > root._lastCount && Config.island.showClipboard)
+            EventBus.islandEvent("clipboard", { text: "Copied" });
+        root._lastCount = root.entries.length;
+    }
 }

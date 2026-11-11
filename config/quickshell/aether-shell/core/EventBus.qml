@@ -28,6 +28,16 @@ Singleton {
     signal powerMenuRequested()
     // On-screen display for volume/brightness changes.
     signal osdRequested(string kind, real value, bool muted)
+    signal clipboardRequested()
+    signal overviewRequested(string mode)      // "all" | "app" | "workspace"
+    signal dockToggleRequested()
+    signal systemCenterRequested(string tab)
+    signal layoutPickerRequested()
+    signal assistantRequested()
+    signal widgetEditRequested()
+    // Transient event for the Dynamic Island: kind is "battery" | "recording"
+    // | "timer" | "notification" | "info"; payload is a plain object.
+    signal islandEvent(string kind, var payload)
     // Ask every popup to close (used before opening another one).
     signal closePopups(string except)
 }

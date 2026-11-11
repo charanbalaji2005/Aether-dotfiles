@@ -1,26 +1,96 @@
-# Progress (dotfiles layer)
+# Progress
 
-For the shell's own feature-by-feature status, see
-`config/quickshell/aether-shell/PROGRESS.md` — this file covers the layer around it.
+## 1.0.0-rc.1 — feature-complete release candidate
 
-## Status definitions (read this before the tables below)
+Tiers as defined below. **Nothing has reached VERIFIED yet**: the checklist in docs/HARDWARE.md
+gates 1.0.0.
 
-- **NOT_STARTED** — no code/config exists.
-- **IN_PROGRESS** — partially built, known gaps.
-- **IMPLEMENTED** — code/config exists and passes every *static* check available in this
-  development environment (syntax validation, shellcheck, structural checks, and — where a real
-  tool exists — an actual build/lint against that tool, e.g. `rpmbuild`/`rpmlint` for the RPM).
-- **TESTED** — actually *executed* and its behavior verified against real assertions (not just
-  "it didn't crash"). Where this appears below, it means a real test ran and I checked its output,
-  not that I assumed it would work.
-- **VERIFIED** — TESTED, on the actual target system this is meant for (a real Hyprland session
-  on real hardware). **Nothing in this repo has reached this tier.** This development environment
-  is a headless Linux sandbox with no display server, no Wayland, no Hyprland, no Quickshell/Qt6
-  installation, and no Bluetooth/audio hardware — anything needing those can only reach
-  IMPLEMENTED or TESTED-in-isolation here, never VERIFIED. That's a real, structural limit of
-  where this was built, not a formality.
+| Area | Status | Notes |
+|---|---|---|
+| NVML telemetry, hybrid-safe sampling | **TESTED** | fake libnvidia-ml through real ctypes; real driver needs hardware |
+| Rendering diagnostics (`aether render`) | **TESTED** | fixture files and canned probe output |
+| GPU-pressure policy, motion profiles, performance tier | **RENDER-TESTED** | |
+| Assistant backend (providers, keyring, registry, audit, redaction) | **TESTED** | real local HTTP servers |
+| Assistant panel, keyring UI | IMPLEMENTED | |
+| Widgets backend (manifest, scanner, install) | **TESTED** | |
+| Widget layer + API, 7 built-ins | IMPLEMENTED (built-ins pass the scanner, qmllint) | input regions need a session |
+| Themes backend / editor | **TESTED** / IMPLEMENTED | |
+| Input, displays (+ watchdog, profiles), autostart, workspaces/sessions | **TESTED** (backend) / IMPLEMENTED (sections) | |
+| Island 2.0, notification rules + sounds, privacy service, clipboard privacy | IMPLEMENTED | `aether-clip-store` shellcheck-clean |
+| Launcher (settings/actions/files/commands/history) | IMPLEMENTED | |
+| 28 Settings sections + search | IMPLEMENTED; section/index/registry consistency **TESTED** | |
+| Workspace names/icons, per-workspace wallpaper, gradient/aurora modes, dock previews/recents | IMPLEMENTED | |
+| Automation v2 | **TESTED** (backend + contract) / IMPLEMENTED (engine, builder) | |
+| Power auto-saver, idle dim | IMPLEMENTED (dim stage **TESTED** in hypridle generation) | |
+| Publishing kit (repo-URL tool, CLI reference generator, templates, release workflow) | **TESTED** (generators in CI checks); workflows not yet run on GitHub | |
 
-## Dotfiles layer
+### Still not implemented
+
+Download/file-transfer progress (no system API), screenshot annotation editor, per-app volume
+and equaliser, process-isolated widget sandbox, real-time 3D wallpapers, translations,
+hibernation controls, camera detection for apps that bypass PipeWire, Meridian Shell beyond the
+"custom zsh file" hook (no Meridian Shell exists in the repository).
+
+## Status tiers
+
+- **TESTED** — executed with real assertions in this repository's test suite (see TEST_REPORT.md).
+- **RENDER-TESTED** — QML executed in a real Qt Quick scene (OpenGL RHI) with behaviour and
+  pixel assertions. Applies to the parts that don't need Quickshell.
+- **IMPLEMENTED** — code exists, passes qmllint/structure/schema/invariant checks and review,
+  but needs a live Quickshell + Hyprland session to execute.
+- **VERIFIED** — run on a real Fedora machine in a real session. **Nothing has reached this tier
+  yet**: this release was built in a headless Linux sandbox (no Wayland compositor, Quickshell,
+  PipeWire, Bluetooth, PAM session or physical GPU).
+- **NOT IMPLEMENTED** — listed so its absence is explicit.
+
+## 0.3.0
+
+| Area | Status | Notes |
+|---|---|---|
+| `install.sh` check / dry-run / install / re-install / resume / rollback / bad options | **TESTED** | `tests/integration/test_installer.sh`, run as a normal user in a fake home with Fedora code paths forced (`--no-packages`). |
+| Package availability checks, DNF5 detection, COPR consent, Quickshell source build | IMPLEMENTED | Needs a real Fedora with repositories. CI job `fedora-preflight` runs `--check`/`--dry-run` in a `fedora:42` container (not yet executed on GitHub's runners). |
+| uninstall / backup / restore / symlink lifecycle | **TESTED** | `test_symlink_lifecycle.sh` (now using the shared managed-path list). |
+| Config schema, validation, migrations, import/export, get/set | **TESTED** | `test_desktop.py`; schema generated from `Config.qml` and checked in CI. |
+| Snapshots (create/verify/tamper/traversal/links/restore/undo/retention) | **TESTED** | |
+| Profiles (11 built-ins, apply, save, import validation) | **TESTED** | Shell UI: IMPLEMENTED. |
+| Palettes → kitty/foot/alacritty/ghostty/Hyprland, zsh profiles, quoting | **TESTED** | Live kitty reload: IMPLEMENTED. |
+| Icon / cursor theme detection and switching | **TESTED** | Against fake theme directories; gsettings/hyprctl effects need a session. |
+| Smart layouts (geometry, matching, launch, skip, apply dispatches, undo) | **TESTED** | Against canned `hyprctl -j` output; real window movement needs Hyprland. |
+| `aether capabilities` tiers, never querying a sleeping dGPU | **TESTED** | Fixture hardware. |
+| Updates / security / services backends | **TESTED** | Parsing + validation; live data needs Fedora. |
+| Automation rule validation, conflicts, loops; Python ≡ JS tables | **TESTED** | Shell engine: IMPLEMENTED. |
+| Hyprland: compat generation, rules version selection, rules v1≡v2, keybind conflicts | **TESTED** | `rules-v2.conf` syntax not yet parsed by a live Hyprland 0.53 — `aether hyprland` runs `--verify-config`. |
+| Spring engine, motion tokens, palettes/metrics/materials | **RENDER-TESTED** | 46 checks. |
+| Shaders: glass, glow, aurora, transitions (wipe/circle), depth parallax | **RENDER-TESTED** | Pixel-verified on Mesa llvmpipe; real GPUs not tested. |
+| Wallpaper stage: no black frame, all modes complete, fallback, rapid changes, reduced motion | **RENDER-TESTED** | |
+| Components: battery families, gauges, switch, slider keyboard, glass panel | **RENDER-TESTED** | |
+| Lock screen unlock path / constant shell scripts / allowlisted actions | **TESTED** (static) | `test_security_invariants.sh`; the invariant test fails on an injected extra unlock. |
+| Lock screen (PAM flow, crash re-lock, clocks, widgets) | IMPLEMENTED | Test with a TTY available the first time (RECOVERY.md). |
+| Dock, Dynamic Island, Overview, System centre, Layout picker, Edge gestures | IMPLEMENTED | |
+| Settings sections (11 new), shell wiring | IMPLEMENTED | |
+| Services: Performance, Window, Action, Automation, Timer, Recording, Visualizer, Island, VideoWallpaper, Cli, Profile, Layout, System, Idle; Media/Power/Theme/Wallpaper extensions | IMPLEMENTED | |
+| `aether-record`, `aether-terminal` | IMPLEMENTED | shellcheck clean; need wf-recorder / terminals. |
+| Safe-mode fallback unit, idle unit | IMPLEMENTED | Structure-checked; `systemd-analyze` not available here. |
+
+### Not implemented (deliberately or pending)
+
+| Item | Why |
+|---|---|
+| Download progress in the island | Linux has no system-wide download-progress API; browsers don't publish one. Not faked. |
+| Screenshot annotation editor | `satty` is in the complete package set; not integrated into the shell yet. |
+| Per-application volume, equaliser, microphone monitoring | Planned for the audio centre; PipeWire node streams not wired yet. |
+| Third-party widget platform / widget SDK | Not started; would need a sandboxing design first. |
+| Real-time 3D wallpaper scenes, AI depth-map generation | Depth maps are supplied by the user; no cloud or ML dependency added. |
+| Ken Burns wallpaper motion | Rejected for now: continuous full-screen redraw contradicts the idle-cost rule. |
+| Window thumbnails without screencopy support | Falls back to icons. |
+| Meridian Shell integration beyond "custom zsh file" | No Meridian Shell exists in the repository; nothing was invented. |
+| Translations / i18n catalogue | Strings are plain QML text; not yet wrapped in `qsTr`. |
+| Workspace deletion | Hyprland removes empty workspaces itself. |
+| Hibernation controls, lid-switch editing | Shown nowhere rather than half-working. |
+
+## Earlier releases
+
+### 0.1 dotfiles layer
 
 | Component | Status | Basis |
 |---|---|---|
@@ -48,7 +118,7 @@ For the shell's own feature-by-feature status, see
 | `packaging/rpm/*` CI job (`release.yml`) | IMPLEMENTED | The workflow YAML is valid and its steps mirror the exact command sequence that was manually verified to work (see the RPM row above) — but the workflow itself hasn't executed on a GitHub runner. |
 | CONTRIBUTING.md / CHANGELOG.md / SECURITY.md / CODE_OF_CONDUCT.md / ARCHITECTURE.md | IMPLEMENTED | Documentation — "tested" doesn't apply in the executable sense; accuracy was checked against what's actually in the repo at time of writing. |
 
-## 0.2.0 upgrade (hardware-aware desktop)
+### 0.2.0 upgrade (hardware-aware desktop)
 
 Built on Windows 11 with Git Bash and Python 3.15 — no Linux, Wayland, Hyprland, Quickshell or
 GPU driver stack. Real tools used for verification: shellcheck 0.11, Qt's qmllint (PySide6),
@@ -65,7 +135,7 @@ CPython unittest. See [TEST_REPORT.md](TEST_REPORT.md) for the exact runs.
 | `scripts/setup-symlinks.sh` (fragment creation), `backup.sh` targets | IMPLEMENTED here | shellcheck clean. The integration test could not run on this Windows host (symlink creation needs Developer Mode); it runs in CI on Linux. |
 | `system/systemd/aether-shell.service` | IMPLEMENTED | Structural checks; `systemd-analyze` unavailable here. |
 
-## What actually got found and fixed by testing (not just written and assumed correct)
+### What actually got found and fixed by testing (not just written and assumed correct)
 
 These are listed because they're the concrete evidence for the TESTED claims above — real bugs
 that static review alone did not catch:
@@ -94,7 +164,7 @@ that static review alone did not catch:
    testing against a fake `$HOME` seeded with a `bookmarks` file before shipping, not by review —
    fixed by switching to per-file symlinks for GTK config specifically.
 
-## Explicitly not started
+### Explicitly not started (0.2.0)
 
 Man pages for the CLI tools, an Arch build actually run through `makepkg`, GPG-signing release
 artifacts, a live-session QML test harness, physical-hardware validation of the graphics tooling,

@@ -1,0 +1,19 @@
+{
+  "aetherWidget": 1,
+  "id": "battery",
+  "name": "Battery",
+  "version": "1.0.0",
+  "api": 1,
+  "entry": "Widget.qml",
+  "description": "Charge level and state.",
+  "author": "AetherOS",
+  "license": "GPL-3.0-or-later",
+  "size": {
+    "w": 200,
+    "h": 110
+  },
+  "permissions": [
+    "battery"
+  ],
+  "requires": []
+}

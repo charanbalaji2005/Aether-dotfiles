@@ -292,6 +292,8 @@ def get_logger() -> logging.Logger:
         handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     except OSError:
         handler = logging.NullHandler()
+    from .redact import RedactingFilter
+    handler.addFilter(RedactingFilter())
     logger.addHandler(handler)
     _LOGGER = logger
     return logger

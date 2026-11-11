@@ -110,3 +110,38 @@ itself is dark-only.
 ## Quickshell build fails
 
 Check [quickshell.org](https://quickshell.org) for current build dependencies; they change.
+
+## Visual effects
+
+**Effects look flat / no frosted grain or glow.** Settings → Effects shows the current quality
+and why (battery, power saver, a struggling GPU, safe mode). If it lists shaders that failed to
+load, your Qt is older than the bundled shaders: `bash scripts/build-shaders.sh` (needs
+`qt6-qtshadertools`) compiles them for your Qt into `~/.cache/aether-shell/shaders`, then
+`aether shell-reload`.
+
+**Animations stutter.** With *Automatic* quality and *Adaptive* on, the shell steps down by
+itself after sustained late frames (System centre → Performance shows the measurements). Or pick
+Eco, or turn on Reduce motion.
+
+**Window thumbnails are icons in the overview.** Live thumbnails need a Quickshell build with
+screencopy support and Hyprland's toplevel export; otherwise the overview uses app icons.
+
+**Video wallpaper doesn't play.** Settings → Wallpaper effects shows the reason (mpvpaper not
+installed, file unreadable, paused for battery/lock/fullscreen, stopped after 3 failures).
+
+## Terminal and shell
+
+**Zsh autosuggestions/highlighting missing on Fedora.** Fixed in 0.3.0 — the plugins are loaded
+from Fedora's paths (`/usr/share/zsh-autosuggestions/`, `/usr/share/zsh-syntax-highlighting/`).
+Install them with `sudo dnf install zsh-autosuggestions zsh-syntax-highlighting`.
+
+**`kitten @` remote control stopped working.** kitty now uses `allow_remote_control socket-only`
+(escape sequences printed by programs can no longer control kitty). Use the socket:
+`kitten @ --to unix:@kitty-$KITTY_PID …`.
+
+## Automation
+
+**A rule didn't run.** Settings → Automation → Recent runs, or System centre → Performance. Rules
+don't run in safe mode, a rule can't fire twice within 3 s, and 20 actions in a minute switch
+automation off (the reason is shown). `aether automation validate` explains invalid rules.
+

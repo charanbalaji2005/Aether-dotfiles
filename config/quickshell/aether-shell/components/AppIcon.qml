@@ -1,12 +1,13 @@
 import QtQuick
+import Quickshell
 import "../theme"
 
-// Best-effort icon resolution: tries an absolute path directly, otherwise
-// walks common hicolor/pixmap locations by icon name. This is not a full
-// implementation of the freedesktop icon theme spec (no theme index parsing,
-// no proper inheritance chain) — it's a pragmatic fallback chain that covers
-// most installed apps. Falls back to a letter avatar when nothing resolves,
-// which is an honest placeholder rather than a fake/broken icon.
+// Icon resolution, in order:
+//   1. an absolute path, used directly;
+//   2. the user's icon theme (Papirus, Adwaita, …) through Quickshell's
+//      theme-aware icon provider — this is what makes icon packs apply;
+//   3. hicolor/pixmaps by name (themes that lack the icon);
+// then a letter avatar, an honest placeholder rather than a broken image.
 Item {
     id: root
 
@@ -23,8 +24,13 @@ Item {
         if (!name || name.length === 0) return [];
         if (name.charAt(0) === "/") return ["file://" + name];
 
-        const sizes = ["scalable", "256x256", "128x128", "64x64", "48x48", "32x32"];
         const list = [];
+        // Quickshell.iconPath(name, true) returns "" when the theme lacks it.
+        if (typeof Quickshell.iconPath === "function") {
+            const themed = Quickshell.iconPath(name, true);
+            if (themed && themed.length > 0) list.push(themed);
+        }
+        const sizes = ["scalable", "256x256", "128x128", "64x64", "48x48", "32x32"];
         for (const size of sizes) {
             const ext = size === "scalable" ? "svg" : "png";
             list.push("file:///usr/share/icons/hicolor/" + size + "/apps/" + name + "." + ext);

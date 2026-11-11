@@ -29,6 +29,16 @@ echo
 for f in "$HYPR_DIR"/*.conf; do
     name="$(basename "$f")"
     [ "$name" = "hyprland.conf" ] && continue
+    # Rule files are version-specific and sourced from the generated
+    # compat.conf (checked below), never from hyprland.conf.
+    if [ "$name" = "rules.conf" ] || [ "$name" = "rules-v2.conf" ]; then
+        if grep -q "source = ~/.config/hypr/$name" "$CONF"; then
+            fail "hyprland.conf sources $name directly (it must come from compat.conf)"
+        else
+            pass "$name is version-selected via compat.conf"
+        fi
+        continue
+    fi
     # recovery.conf is a standalone config for `Hyprland -c`, never sourced.
     if [ "$name" = "recovery.conf" ]; then
         if grep -qE '^\s*source\s*=' "$f"; then
@@ -95,13 +105,72 @@ fi
 
 # Every layer namespace the rules expect must exist in the QML.
 SHELL_DIR="$REPO_DIR/config/quickshell/aether-shell"
-for ns in bar launcher controlcenter dashboard notifications toasts settings clipboard bluetooth wallpicker wallpaper powermenu osd; do
+for ns in bar launcher controlcenter dashboard notifications toasts settings clipboard bluetooth wallpicker wallpaper powermenu osd island dock overview systemcenter layouts edge; do
     if grep -rqiE "namespace: \"aether-$ns\"" "$SHELL_DIR"; then
         pass "layer namespace aether-$ns is set by the shell"
     else
         fail "rules.conf references aether-$ns but no QML surface sets that namespace"
     fi
 done
+
+# compat.conf generation sources exactly one rules file, matched to the version.
+PYTHONPATH="$REPO_DIR/lib" python3 - "$REPO_DIR" <<'PYEOF' || failed=1
+import sys
+sys.path.insert(0, sys.argv[1] + "/tests/python")
+import fixtures
+from aether.graphics import hyprconf
+for tag, want, not_want in (("v0.52.0", "rules.conf", "rules-v2.conf"), ("v0.53.0", "rules-v2.conf", "rules.conf")):
+    s = fixtures.nvidia_desktop()
+    s.cmd("hyprctl version -j", '{"tag": "%s"}' % tag)
+    text = hyprconf.generate_compat_conf(s.ctx(), {"workspaceSwipe": True})
+    s.cleanup()
+    if "source = ~/.config/hypr/%s\n" % want not in text or "source = ~/.config/hypr/%s\n" % not_want in text:
+        print("FAIL: compat.conf for %s does not source %s alone" % (tag, want)); sys.exit(1)
+    print("PASS: compat.conf for Hyprland %s sources %s" % (tag[1:], want))
+PYEOF
+
+# Both rule files must cover the same layer namespaces and window classes/titles.
+python3 - "$HYPR_DIR" <<'PYEOF' || failed=1
+import re, sys
+d = sys.argv[1]
+def keys(path):
+    t = "\n".join(l.split("#", 1)[0] for l in open(path, encoding="utf-8"))
+    ns = set(re.findall(r"aether-\(?([a-z|]+)", t))
+    names = set()
+    for group in ns:
+        names |= set(group.split("|"))
+    pats = set(re.findall(r"(?:class|title):?\s*(\^\([^)]*\)[^,\s]*)", t))
+    return names, pats
+a, b = keys(d + "/rules.conf"), keys(d + "/rules-v2.conf")
+if a != b:
+    print("FAIL: rules.conf and rules-v2.conf differ:", a[0] ^ b[0], a[1] ^ b[1]); sys.exit(1)
+print("PASS: rules.conf and rules-v2.conf cover the same %d namespaces and %d window patterns" % (len(a[0]), len(a[1])))
+PYEOF
+
+# Keybinds: no key combination bound twice to different commands, except
+# pairs that are intentionally chained (Hyprland runs both).
+python3 - "$HYPR_DIR/keybinds.conf" <<'PYEOF' || failed=1
+import re, sys
+CHAINED = {("ALT", "Tab")}
+seen, bad = {}, []
+mod = "SUPER"
+for line in open(sys.argv[1], encoding="utf-8"):
+    line = line.split("#", 1)[0].strip()
+    m = re.match(r"^\$mod\s*=\s*(\S+)", line)
+    if m:
+        mod = m.group(1); continue
+    m = re.match(r"^bind[a-z]*\s*=\s*([^,]*),\s*([^,]+),\s*(.*)$", line)
+    if not m:
+        continue
+    mods = " ".join(sorted(m.group(1).replace("$mod", mod).split()))
+    key = (mods, m.group(2).strip())
+    if key in seen and seen[key] != m.group(3) and key not in CHAINED:
+        bad.append("%s+%s: '%s' vs '%s'" % (key[0], key[1], seen[key], m.group(3)))
+    seen.setdefault(key, m.group(3))
+if bad:
+    print("FAIL: conflicting keybinds:\n  " + "\n  ".join(bad)); sys.exit(1)
+print("PASS: %d keybinds, no conflicting combinations" % len(seen))
+PYEOF
 
 echo
 if [ "$failed" -eq 0 ]; then

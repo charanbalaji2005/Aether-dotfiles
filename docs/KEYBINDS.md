@@ -18,8 +18,29 @@
 | `SUPER + CTRL + W` | Next wallpaper |
 | `SUPER + Escape` | Power menu |
 | `SUPER + L` | Lock |
+| `SUPER + O` | Overview (all monitors, workspaces, windows) |
+| `SUPER + SHIFT + O` | Exposé: windows of the focused app |
+| `SUPER + Z` | Show / hide the dock |
+| `SUPER + X` | System centre |
+| `SUPER + G` | Window layouts |
+| `SUPER + U` | Expand / collapse the Dynamic Island |
+| `SUPER + Y` | Assistant (when enabled) |
+| `SUPER + SHIFT + Y` | Arrange desktop widgets |
+| `SUPER + SHIFT + R` | Start / stop screen recording (full screen) |
+| `SUPER + ALT + R` | Start / stop screen recording (region) |
 | `Print` | Screenshot (full) |
 | `SHIFT + Print`, `SUPER + SHIFT + S` | Screenshot (region) |
+
+Inside the launcher, prefixes: `/report` searches your files · `>command` runs a command in your
+terminal (only on Enter) · plain text also matches Settings and AetherOS actions.
+
+Inside the overview: type to search · arrows + `Enter` focus · `Delete` (twice) close ·
+`1`–`9` switch workspace · drag a window onto another workspace (or "New workspace") · double-click
+a workspace title to rename it · `Esc`.
+
+Touchpad: three-finger swipe left/right switches workspaces; up/down are configurable
+(Settings → Gestures). `tests/hyprland/test_config_syntax.sh` checks that no key combination is
+bound to two different commands.
 
 Inside the launcher: type to search · `↑ ↓` · `PgUp PgDn` · `Home End` · `Enter` launch ·
 `Tab / Shift+Tab` categories · `Ctrl+F` (or right-click) toggle favourite · `Esc`.

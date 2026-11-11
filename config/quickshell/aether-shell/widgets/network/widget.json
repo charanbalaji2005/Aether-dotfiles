@@ -1,0 +1,19 @@
+{
+  "aetherWidget": 1,
+  "id": "network",
+  "name": "Network",
+  "version": "1.0.0",
+  "api": 1,
+  "entry": "Widget.qml",
+  "description": "Connection and throughput.",
+  "author": "AetherOS",
+  "license": "GPL-3.0-or-later",
+  "size": {
+    "w": 240,
+    "h": 110
+  },
+  "permissions": [
+    "network"
+  ],
+  "requires": []
+}

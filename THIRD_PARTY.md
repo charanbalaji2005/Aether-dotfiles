@@ -33,3 +33,15 @@ copied from `end-4/dots-hyprland` or any other existing dotfiles repository. Whe
 is dictated by the tool itself (Hyprland's `bind = `/`windowrule = ` syntax, kitty's
 `key value` format), that structure is the tool's own documented format, not something copyrightable
 in itself — the actual keybind choices, window rules, color values, and scripts here are original.
+
+## Used at runtime since 1.0 (not vendored; invoked or loaded if installed)
+
+| Component | License | Use |
+|---|---|---|
+| NVIDIA Management Library (`libnvidia-ml.so.1`) | NVIDIA proprietary (ships with the driver) | GPU telemetry, loaded with ctypes only if present |
+| libsecret `secret-tool` | LGPL-2.1+ | storing assistant API keys in the keyring |
+| plocate | GPL-2.0 | launcher file search |
+| freedesktop sound theme, libcanberra / PipeWire `pw-play` | various free licenses | notification sounds |
+| Ollama (optional, user-installed) | MIT | local assistant provider over HTTP |
+| egl-utils / vulkan-tools (optional) | MIT / Apache-2.0 | `aether render --probe` |
+

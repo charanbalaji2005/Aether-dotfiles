@@ -1,0 +1,34 @@
+# Recommended AetherOS packages (Fedora / dnf): installed in the
+# "recommended" and "complete" modes. Each one backs a feature that hides
+# itself or reports "unavailable" when the package is missing, so skipping
+# any of them never breaks the desktop.
+
+# Idle locking and display power (Settings → Lock screen)
+hypridle
+
+# Compile the shell's shaders for the installed Qt (scripts/build-shaders.sh)
+qt6-qtshadertools
+
+# Control centre
+hyprsunset              # night light
+power-profiles-daemon   # battery saver / performance (tuned-ppd provides the same D-Bus API)
+
+# Theme
+ImageMagick             # accent colour from the wallpaper
+
+# Notifications from scripts
+libnotify
+
+# Screen recording (aether-record)
+wf-recorder
+
+# File manager used by the default keybind
+nautilus
+
+# AI assistant API keys go to the desktop keyring through secret-tool
+libsecret
+# Notification sounds (freedesktop sound theme + player)
+sound-theme-freedesktop
+libcanberra-gtk3
+# Launcher file search ("/query"); falls back to a bounded scan without it
+plocate
