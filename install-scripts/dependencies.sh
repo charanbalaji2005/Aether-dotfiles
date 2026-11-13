@@ -172,8 +172,11 @@ install_packages() {
     if [ ${#PKG_AVAILABLE[@]} -eq 0 ]; then ok "No packages to install."; return 0; fi
     echo "  sudo $DNF install ${PKG_AVAILABLE[*]}"
     if confirm "Install these ${#PKG_AVAILABLE[@]} packages?"; then
-        if [ "$DRY" -eq 1 ]; then run sudo "$DNF" install -y "${PKG_AVAILABLE[@]}"
-        else with_pty sudo "$DNF" install -y "${PKG_AVAILABLE[@]}"; fi
+        # Ten downloads at a time instead of DNF's default three: about a hundred
+        # packages arrive several times faster.
+        local fast=(--setopt=max_parallel_downloads=10)
+        if [ "$DRY" -eq 1 ]; then run sudo "$DNF" install -y "${fast[@]}" "${PKG_AVAILABLE[@]}"
+        else with_pty sudo "$DNF" install -y "${fast[@]}" "${PKG_AVAILABLE[@]}"; fi
         state_set "installed_pkgs" "${PKG_AVAILABLE[*]}"
     else
         warn "Packages skipped. Features that need them will report 'unavailable'."
