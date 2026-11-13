@@ -1,14 +1,14 @@
 # Upstream versions like 1.0.0-rc.2 map to RPM Version 1.0.0 with a
 # pre-release Release (0.N.rcN), so 1.0.0-1 later sorts after every RC.
-%global upstream_version 1.0.0-rc.2
+%global upstream_version 1.0.0
 
 Name:           aetheros-dotfiles
 Version:        1.0.0
-Release:        0.2.rc2%{?dist}
+Release:        1%{?dist}
 Summary:        AetherOS desktop for Hyprland: Quickshell shell, configuration and tools
 
 License:        GPL-3.0-or-later
-URL:            https://github.com/OWNER/aetheros-dotfiles
+URL:            https://github.com/charanbalaji2005/Aether-dotfiles
 Source0:        %{url}/releases/download/v%{upstream_version}/%{name}-%{upstream_version}.tar.gz
 
 BuildArch:      noarch
@@ -95,26 +95,31 @@ chmod 0755 %{buildroot}%{_datadir}/%{name}/install.sh %{buildroot}%{_datadir}/%{
 %{_bindir}/aether-wallpaper
 
 %changelog
-* Wed Nov 11 2026 AetherOS Maintainer <maintainer@REPLACE.ME> - 1.0.0-0.2.rc2
+* Sat Nov 14 2026 Neelampalli Charan Balaji <neelampallicharanbalaji14@gmail.com> - 1.0.0-1
+- 1.0.0: interactive onboarding installer (component selection, live progress,
+  hardware detection, backups, validation report, restore), partial installs,
+  user.conf for your own Hyprland settings. See CHANGELOG.md.
+
+* Wed Nov 11 2026 Neelampalli Charan Balaji <neelampallicharanbalaji14@gmail.com> - 1.0.0-0.2.rc2
 - Release hardening: verified Quickshell API use (0.2.0-0.3.2), PAM start failure
   handling, widget trust model, GPU telemetry fixes, symlinked entry points,
   reproducible source tarball. See CHANGELOG.md.
 
-* Wed Nov 11 2026 AetherOS Maintainer <maintainer@REPLACE.ME> - 1.0.0-0.1.rc1
+* Wed Nov 11 2026 Neelampalli Charan Balaji <neelampallicharanbalaji14@gmail.com> - 1.0.0-0.1.rc1
 - 1.0 release candidate: NVML telemetry, GPU-pressure policy, assistant, widgets, Island 2.0,
   28 settings sections, custom themes, displays with auto-revert. See CHANGELOG.md.
 
-* Wed Nov 11 2026 AetherOS Maintainer <maintainer@REPLACE.ME> - 0.3.0-1
+* Wed Nov 11 2026 Neelampalli Charan Balaji <neelampallicharanbalaji14@gmail.com> - 0.3.0-1
 - Installer lifecycle (check/dry-run/install/update/uninstall/rollback), snapshots, recovery,
   safe-mode unit, animation/graphics engine, dock, island, overview, system centre, layouts,
   automation, profiles, palettes, wallpaper engine, lock screen hardening. See CHANGELOG.md.
 
-* Mon Nov 09 2026 AetherOS Maintainer <maintainer@REPLACE.ME> - 0.2.0-1
+* Mon Nov 09 2026 Neelampalli Charan Balaji <neelampallicharanbalaji14@gmail.com> - 0.2.0-1
 - aether CLI backend (lib/aether): hardware detection, graphics/NVIDIA
   management, telemetry, performance profiles, diagnostics, repair.
 - Shell: control centre, system dashboard, launcher favourites/recents,
   notification grouping, OSD, design system with light theme.
 
-* Sat Aug 22 2026 AetherOS Maintainer <maintainer@REPLACE.ME> - 0.1.0-1
+* Sat Aug 22 2026 Neelampalli Charan Balaji <neelampallicharanbalaji14@gmail.com> - 0.1.0-1
 - Initial packaging: Hyprland config, Aether Shell, terminal/shell config,
   install/backup/restore/uninstall scripts.

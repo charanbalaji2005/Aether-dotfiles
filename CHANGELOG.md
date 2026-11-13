@@ -1,11 +1,52 @@
 # Changelog
 
-Dates reflect when each phase was built, not calendar releases — this hasn't been tagged/released
-yet (see top-level `PROGRESS.md` for current status before treating anything below as "shipped").
+Dates reflect when each phase was built. Known limits of a release are listed in
+[README.md](README.md#status) and [docs/HARDWARE.md](docs/HARDWARE.md).
 
-## Unreleased — classic interface
+## 1.0.0 — 2026-11-14
 
-### Added
+### Added — installer
+- **Onboarding installer** (`./install.sh` on a terminal): logo, version and copyright, a
+  system summary (distribution, kernel, CPU, GPUs and their drivers, memory, display, desktop,
+  Hyprland/Waybar/Quickshell versions, login manager, disk), prerequisites, and a main menu —
+  Start installation · Update · Restore previous configuration · Installation information.
+  Dialogs use whiptail; `--no-tui`/`AETHER_UI=plain` gives numbered prompts.
+- **First-run support screen** with the repository link; it can open the repository in the
+  browser or star it with a signed-in GitHub CLI — only when chosen. Shown once.
+- **Components**: Hyprland, Waybar, Dynamic Island, macOS Dock, Rofi Launchpad, Kitty, Zsh,
+  GTK themes and icons, wallpapers, fonts, notifications, Bluetooth, audio, SDDM login theme,
+  application configs (and the Quickshell shell for the aether interface). Presets:
+  Recommended, Select all, Deselect all, Custom. Without menus: `--components a,b`,
+  `--preset`, `--list-components`. Unselected components keep your existing configuration.
+- **Packages per component** (`packages/fedora/components.tsv`, `?optional`, `a|b`
+  alternatives); optional GPU userspace helpers only for a driver already in use — drivers are
+  never installed or replaced.
+- **Live progress**: numbered steps `[n/N]`, spinner and elapsed time, download bar with
+  percentage, speed and size (DNF, git, curl), the latest log lines, ✔/✖ per step; every
+  question is asked before the run so it proceeds unattended.
+- **Preservation**: keybinds from a replaced Hyprland config are saved (commented out) in
+  `~/.config/aether-shell/hypr/user.conf`, its scripts in
+  `~/.config/aether-shell/user/hypr-scripts`, replaced wallpapers in `~/Pictures/Wallpapers`.
+- **Validation and report**: per-component checks (Hyprland, Waybar layouts, Rofi themes,
+  Quickshell, SwayNC, required programs), broken symlinks, duplicate startup (exec-once,
+  enabled units, running daemons) → `~/.local/state/aether/reports/`.
+- **Final screen**: installed / skipped / failed components, backup, log and report; restart
+  the Hyprland desktop, reboot (asked, never automatic), view the log or report.
+- `update.sh` and `restore.sh` at the top level; `install.sh --restore [--archive FILE]`.
+- Run as a single downloaded file, the installer clones the repository's `release-final`
+  branch over HTTPS, shows the exact commit (and its signature, if any) and runs it only
+  after an explicit yes.
+- `~/.config/aether-shell/hypr/user.conf`: your own Hyprland settings, sourced last.
+
+### Changed — installer
+- Steps are isolated: a failing component is reported and the rest still installs; an
+  interrupted run resumes per component.
+- `setup-symlinks.sh --only GROUPS`; updates and `aether repair` re-link the saved selection.
+- The Quickshell build toolchain is planned only for the Quickshell shell.
+- License notice: copyright Neelampalli Charan Balaji, GPL-3.0-or-later (the contradictory
+  "All rights reserved" was removed).
+
+### Added — classic interface
 - **Classic interface** (now the default; `aether-interface set aether` restores the Quickshell
   shell): Waybar (7 layouts, 4 styles), Rofi launcher and menus (Wi-Fi, Bluetooth, audio,
   clipboard, emoji, calculator, web search, keybinding reference, theme, quick settings),

@@ -781,6 +781,16 @@ def cmd_repair(ctx: Context, args) -> int:
     for frag in (hyprconf.hardware_conf_path(), hyprconf.profile_conf_path(), hyprconf.compat_conf_path()):
         if not os.path.isfile(frag):
             actions.append(("Recreate missing Hyprland fragment %s" % frag, lambda: hyprconf.ensure_defaults(), False))
+    # hyprland.conf sources the user's own file last; it must exist (empty is fine).
+    user_conf = os.path.join(os.path.dirname(hyprconf.compat_conf_path()), "user.conf")
+    if not os.path.isfile(user_conf):
+        def _user_conf(path=user_conf):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("# Your own Hyprland settings: binds, rules, options. Sourced last by\n"
+                        "# ~/.config/hypr/hyprland.conf, so anything here wins. AetherOS never\n"
+                        "# overwrites this file. Check new binds with: aether-bindings check\n")
+        actions.append(("Create your (empty) Hyprland settings file %s" % user_conf, _user_conf, False))
     compat = hyprconf.compat_conf_path()
     if system.hyprland_version(ctx) and (not os.path.isfile(compat) or "Placeholder created by AetherOS" in open(compat, encoding="utf-8", errors="replace").read()):
         actions.append(("Write version-specific Hyprland settings to %s" % compat,

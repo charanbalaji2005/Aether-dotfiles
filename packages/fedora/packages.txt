@@ -1,79 +1,18 @@
-# AetherOS package list (Fedora / dnf)
-# One package per line, comments start with #.
-# install.sh reads this and installs everything with `dnf install`.
-# Quickshell itself is NOT here — Fedora has no official package for it
-# as of this writing; install.sh builds it from source (see the "Quickshell"
-# note at the bottom of this file and in install.sh).
-
-# Compositor
-hyprland
-xdg-desktop-portal-hyprland
-hyprpolkitagent
-hyprpaper
-
-# Wayland/session essentials
-qt6-qtbase
-qt6-qtdeclarative
-qt6-qtwayland
-qt6ct
-
-# Audio
-pipewire
-pipewire-pulseaudio
-wireplumber
-
-# Power
-upower
-brightnessctl
-
-# AetherOS CLI backend (hardware detection, telemetry, graphics tools).
-# Standard library only — no pip packages.
+# Core packages: needed by every AetherOS component, installed in all modes.
+# Component packages: components.tsv. Extras by --mode: recommended.txt,
+# optional.txt, advanced.txt, classic-extra.txt. One package per line.
 python3
+python3-gobject
+git
+rsync
 pciutils
 hwdata
 mokutil
-
-# Network
-NetworkManager
-
-# Bluetooth
-bluez
-bluez-tools
-
-# Media
-playerctl
-
-# Clipboard / screenshots
+jq
+libnotify
+ImageMagick
+fontconfig
 wl-clipboard
-grim
-slurp
 cliphist
-
-# Terminal + shell
-kitty
-zsh
-zsh-autosuggestions
-zsh-syntax-highlighting
-
-# CLI niceties (optional — scripts/config check for these before using them)
-eza
-bat
-
-# Fonts
-jetbrains-mono-fonts-all
-google-noto-sans-fonts
-google-noto-color-emoji-fonts
-
-# GTK app theming consistency
-adwaita-gtk2-theme
-gtk-murrine-engine
-
-# Build tooling (needed to build Quickshell from source — see install.sh)
-cmake
-ninja-build
-gcc-c++
-git
-qt6-qtbase-devel
-qt6-qtdeclarative-devel
-qt6-qtwayland-devel
-pipewire-devel
+upower
+NetworkManager

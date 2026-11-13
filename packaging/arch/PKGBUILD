@@ -1,4 +1,4 @@
-# Maintainer: AetherOS Maintainer <maintainer@REPLACE.ME>
+# Maintainer: Neelampalli Charan Balaji <neelampallicharanbalaji14@gmail.com>
 #
 # STATUS: the package() function is exercised by tests/packaging/test_packages.sh
 # (run with bash against the real release tarball); a real `makepkg`/`namcap`
@@ -11,12 +11,12 @@
 # verification.
 
 pkgname=aetheros-dotfiles
-_upstreamver=1.0.0-rc.2
-pkgver=1.0.0rc2
+_upstreamver=1.0.0
+pkgver=1.0.0
 pkgrel=1
 pkgdesc="AetherOS Hyprland desktop: Quickshell shell, configs and tools"
 arch=('any')
-url="https://github.com/OWNER/aetheros-dotfiles"
+url="https://github.com/charanbalaji2005/Aether-dotfiles"
 license=('GPL-3.0-or-later')
 depends=('hyprland' 'python' 'kitty' 'zsh' 'bash')
 optdepends=('quickshell: the aether (Quickshell) interface'

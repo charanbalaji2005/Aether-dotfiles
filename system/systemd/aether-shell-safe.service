@@ -1,6 +1,6 @@
 [Unit]
 Description=AetherOS desktop shell — safe mode (no shaders, effects, video wallpaper or automation)
-Documentation=https://github.com/OWNER/aetheros-dotfiles
+Documentation=https://github.com/charanbalaji2005/Aether-dotfiles
 PartOf=graphical-session.target
 # Started by aether-shell.service's OnFailure= (never enabled on its own),
 # or by hand:  systemctl --user start aether-shell-safe.service

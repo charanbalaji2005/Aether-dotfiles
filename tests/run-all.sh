@@ -21,6 +21,7 @@ SUITES=(
     "tests/python/run_python_tests.sh"
     "tests/integration/test_symlink_lifecycle.sh"
     "tests/integration/test_installer.sh"
+    "tests/integration/test_onboarding.sh"
     "tests/integration/test_symlinked_entrypoints.sh"
     "tests/packaging/test_tarball_pkgbuild.sh"
     "tests/packaging/test_rpm_build.sh"

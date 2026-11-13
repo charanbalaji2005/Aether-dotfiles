@@ -84,11 +84,13 @@ for frag in hardware.conf compat.conf profile.conf; do
     fi
 done
 
-last_source="$(grep -E '^\s*source\s*=' "$CONF" | tail -1)"
-if [[ "$last_source" == *"profile.conf"* ]]; then
-    pass "profile.conf is sourced last (profiles override defaults)"
+# The performance profile overrides every AetherOS default; only the user's
+# own file (user.conf) comes after it, so the user always has the last word.
+last_two="$(grep -E '^\s*source\s*=' "$CONF" | tail -2 | sed 's|.*/||' | tr '\n' ' ')"
+if [ "$last_two" = "profile.conf user.conf " ]; then
+    pass "profile.conf is the last AetherOS fragment, followed only by the user's user.conf"
 else
-    fail "profile.conf must be the last source line (found: $last_source)"
+    fail "the last two source lines must be profile.conf then user.conf (found: $last_two)"
 fi
 
 # hardware.conf sets env vars: it must come before anything that might rely on them.

@@ -1,17 +1,25 @@
 #!/usr/bin/bash
-# AetherOS installer for Fedora.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Neelampalli Charan Balaji
 #
-#   ./install.sh              interactive: preflight, show the plan, ask, install
+# AetherOS Dotfiles installer for Fedora — https://github.com/charanbalaji2005/Aether-dotfiles
+#
+#   ./install.sh              on a terminal: the onboarding installer (menus, component
+#                             selection, live progress, validation, final screen)
 #   ./install.sh --check      read-only preflight (exit 1 on a blocking problem)
 #   ./install.sh --dry-run    show exactly what --install would do; changes nothing
-#   ./install.sh --install    install (resumes an interrupted run)
+#   ./install.sh --install    install without menus (resumes an interrupted run)
 #   ./install.sh --update     pull, re-link, migrate settings, rebuild, validate
+#   ./install.sh --restore [--archive FILE]   put a backup back (menu on a terminal)
 #   ./install.sh --uninstall  remove AetherOS's links and services; keeps your files
 #   ./install.sh --rollback   undo the installation and put your old configs back
+#   ./install.sh --list-components
 #
 # Options:
+#   --components a,b,…  install only these components (see --list-components)
+#   --preset recommended|all|minimal   a ready-made selection (default: from --mode)
 #   --interface classic|aether            classic: Waybar, Rofi, SwayNC, Wlogout, Hyprlock, swww
-#                       (JaKooLit-style); aether: the Quickshell shell. Default: your current
+#                       (macOS-inspired); aether: the Quickshell shell. Default: your current
 #                       choice, else classic. Switch later with: aether-interface set …
 #   --mode minimal|recommended|complete   which package sets to install (default: recommended)
 #   --yes               don't ask before installing packages from enabled repositories
@@ -22,18 +30,62 @@
 #   --with-zshrc        replace an existing ~/.zshrc (it is moved aside, never deleted)
 #   --restart           ignore the saved progress of an interrupted install
 #   --no-fonts          don't offer to download JetBrainsMono Nerd Font
+#   --no-tui            numbered prompts instead of dialog windows (also: AETHER_UI=plain)
 #
 # What it never does: run as root, change SELinux/firewall/Secure Boot, touch
-# the bootloader or kernel, install GPU drivers without its own separate
-# confirmation, replace your display manager, or delete a file it didn't create.
+# the bootloader or kernel, install or replace GPU drivers, replace your display
+# manager, reboot by itself, or delete a file it didn't create.
 #
 # Log: ~/.local/state/aether/logs/install-<timestamp>.log
 
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+AETHER_REPO_SLUG="charanbalaji2005/Aether-dotfiles"
+AETHER_REPO_WEB="https://github.com/$AETHER_REPO_SLUG"
+AETHER_REPO_URL="$AETHER_REPO_WEB.git"
+AETHER_BRANCH="${AETHER_BRANCH:-release-final}"
+
+# ── bootstrap: run as a single downloaded file ──────────────────────────
+# Outside a checkout, the repository is cloned (HTTPS, fixed URL) to
+# ~/.local/share/aether-dotfiles, the exact commit is shown, and the cloned
+# installer runs only after an explicit yes. Nothing else is downloaded or run.
+SELF="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+REPO_DIR="$(cd "$(dirname "$SELF")" 2>/dev/null && pwd || echo /nonexistent)"
+if [ ! -f "$REPO_DIR/functions/ui.sh" ]; then
+    dest="${AETHER_DIR:-$HOME/.local/share/aether-dotfiles}"
+    echo "AetherOS Dotfiles — © 2026 Neelampalli Charan Balaji — $AETHER_REPO_WEB"
+    echo
+    [ "$(id -u)" -ne 0 ] || { echo "Run this as your normal user, not root." >&2; exit 1; }
+    command -v git >/dev/null 2>&1 || { echo "git is needed first: sudo dnf install git" >&2; exit 1; }
+    if [ -d "$dest/.git" ]; then
+        echo "Updating the existing copy in $dest…"
+        git -C "$dest" pull --ff-only
+    else
+        echo "Downloading AetherOS ($AETHER_BRANCH) to $dest…"
+        git clone --depth 1 --branch "$AETHER_BRANCH" --progress "$AETHER_REPO_URL" "$dest"
+    fi
+    commit="$(git -C "$dest" rev-parse HEAD)"
+    echo
+    echo "Downloaded commit: $(git -C "$dest" log -1 --format='%h  %s  (%cd)' --date=short)"
+    if git -C "$dest" verify-commit HEAD >/dev/null 2>&1; then echo "Signature: valid (git verify-commit)"
+    else echo "Signature: none — review it at $AETHER_REPO_WEB/commit/$commit"; fi
+    echo
+    if [ -t 0 ]; then
+        read -r -p "Run the installer from this commit? [y/N] " reply
+        [ "$reply" = y ] || [ "$reply" = Y ] || { echo "Nothing was run. The files are in $dest."; exit 0; }
+    else
+        case " $* " in *" --yes "*|*" -y "*) ;; *) echo "Not a terminal: re-run with --yes to run $dest/install.sh, or run it yourself." >&2; exit 1 ;; esac
+    fi
+    exec bash "$dest/install.sh" "$@"
+fi
+
 # shellcheck source=SCRIPTDIR/scripts/lib/common.sh
 . "$REPO_DIR/scripts/lib/common.sh"
+for f in "$REPO_DIR"/functions/*.sh "$REPO_DIR"/install-scripts/*.sh; do
+    # shellcheck source=/dev/null
+    . "$f"
+done
+AETHER_VERSION="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' "$REPO_DIR/lib/aether/__init__.py")"
 
 MIN_FEDORA=41
 # Oldest Quickshell whose API covers everything the shell uses — verified by
@@ -51,22 +103,30 @@ RESTART=0
 DRY=0
 INTERFACE=""
 INSTALL_FONTS=1
+COMPONENTS_ARG=""
+PRESET=""
+ARCHIVE=""
+ENABLE_BLUETOOTH=""     # "": ask, 1: yes, 0: no
+ENABLE_SDDM_THEME=0
+UPDATE_PACKAGES=0
+COMPONENTS=""
 
-usage() { sed -n '2,29p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '5,37p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --check|--dry-run|--install|--update|--uninstall|--rollback)
-            [ -z "$ACTION" ] || { echo "Choose one of --check/--dry-run/--install/--update/--uninstall/--rollback." >&2; exit 2; }
+        --check|--dry-run|--install|--update|--uninstall|--rollback|--restore|--list-components)
+            [ -z "$ACTION" ] || { echo "Choose one of --check/--dry-run/--install/--update/--restore/--uninstall/--rollback." >&2; exit 2; }
             ACTION="${1#--}" ;;
-        --mode)
-            shift
-            MODE="${1:-}" ;;
+        --mode) shift; MODE="${1:-}" ;;
         --mode=*) MODE="${1#--mode=}" ;;
-        --interface)
-            shift
-            INTERFACE="${1:-}" ;;
+        --interface) shift; INTERFACE="${1:-}" ;;
         --interface=*) INTERFACE="${1#--interface=}" ;;
+        --components) shift; COMPONENTS_ARG="${1:-}" ;;
+        --components=*) COMPONENTS_ARG="${1#--components=}" ;;
+        --preset) shift; PRESET="${1:-}" ;;
+        --preset=*) PRESET="${1#--preset=}" ;;
+        --archive) shift; ARCHIVE="${1:-}" ;;
         --no-fonts) INSTALL_FONTS=0 ;;
         --yes|-y) ASSUME_YES=1 ;;
         --enable-copr) ENABLE_COPR=1 ;;
@@ -74,20 +134,50 @@ while [ $# -gt 0 ]; do
         --skip-quickshell) INSTALL_QUICKSHELL=0 ;;
         --with-zshrc) WITH_ZSHRC=1 ;;
         --restart) RESTART=1 ;;
+        --no-tui) export AETHER_UI=plain ;;
         -h|--help) usage; exit 0 ;;
+        --version) echo "AetherOS Dotfiles $AETHER_VERSION — © 2026 Neelampalli Charan Balaji"; exit 0 ;;
         *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
     esac
     shift
 done
 case "$MODE" in minimal|recommended|complete) ;; *) echo "--mode must be minimal, recommended or complete" >&2; exit 2 ;; esac
+case "$PRESET" in ""|recommended|all|minimal) ;; *) echo "--preset must be recommended, all or minimal" >&2; exit 2 ;; esac
 if [ -z "$INTERFACE" ]; then
     INTERFACE="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/aether-shell/interface" 2>/dev/null || true)"
     case "$INTERFACE" in classic|aether) ;; *) INTERFACE=classic ;; esac
 fi
 case "$INTERFACE" in classic|aether) ;; *) echo "--interface must be classic or aether" >&2; exit 2 ;; esac
-# The classic interface doesn't use Quickshell: don't build it for nothing.
-[ "$INTERFACE" = classic ] && INSTALL_QUICKSHELL=0
 [ "$ACTION" = "dry-run" ] && DRY=1
+
+if [ "$ACTION" = list-components ]; then
+    for id in $(comp_list "$INTERFACE"); do
+        printf '  %-15s %s%s\n' "$id" "$(comp_label "$id")" "$(comp_preset recommended "$INTERFACE" | grep -qx "$id" && echo '  [recommended]')"
+    done
+    exit 0
+fi
+
+# The selection: --components, else --preset, else what --mode implies.
+# An update keeps the components chosen at install time.
+resolve_components() {
+    if [ -n "$COMPONENTS_ARG" ]; then
+        COMPONENTS="$(comp_normalize "$INTERFACE" "$COMPONENTS_ARG")" || exit 2
+    elif [ -n "$PRESET" ]; then
+        COMPONENTS="$(comp_preset "$PRESET" "$INTERFACE" | tr '\n' ' ')"
+    elif [ "$ACTION" = update ] && [ -n "$(comp_saved)" ]; then
+        COMPONENTS="$(comp_normalize "$INTERFACE" "$(comp_saved)" 2>/dev/null || comp_preset recommended "$INTERFACE" | tr '\n' ' ')"
+    else
+        case "$MODE" in
+            minimal) COMPONENTS="$(comp_preset minimal "$INTERFACE" | tr '\n' ' ')" ;;
+            recommended) COMPONENTS="$(comp_preset recommended "$INTERFACE" | tr '\n' ' ')" ;;
+            complete) COMPONENTS="$(comp_preset all "$INTERFACE" | grep -vx login-manager | tr '\n' ' ')" ;;
+        esac
+    fi
+    COMPONENTS="${COMPONENTS% }"
+    # Quickshell is built only for the Quickshell shell (the island falls back to Waybar).
+    [[ " $COMPONENTS " == *" aether-shell "* ]] || INSTALL_QUICKSHELL=0
+}
+resolve_components
 
 if [ "$(id -u)" -eq 0 ]; then
     echo "Run this as your normal user, not root. sudo is used only for the package steps, and each is shown first." >&2
@@ -97,12 +187,19 @@ fi
 STATE_DIR="$(aether_state_dir)"
 STATE_FILE="$STATE_DIR/install.state"
 LOG_DIR="$STATE_DIR/logs"
+LOG_FILE=""
+REPORT_FILE=""
+WARN_FILE=""
 
 # ── output ──────────────────────────────────────────────────────────────
 if [ -t 1 ]; then B=$'\033[1m'; G=$'\033[32m'; Y=$'\033[33m'; R=$'\033[31m'; D=$'\033[2m'; N=$'\033[0m'; else B=""; G=""; Y=""; R=""; D=""; N=""; fi
 step()  { printf '\n%s==> %s%s\n' "$B" "$1" "$N"; }
 ok()    { printf '  %sPASS%s  %s\n' "$G" "$N" "$1"; }
-warn()  { printf '  %sWARN%s  %s\n' "$Y" "$N" "$1"; WARNINGS=$((WARNINGS + 1)); }
+# Steps run in subshells, so warnings are also counted in a file.
+warn()  {
+    printf '  %sWARN%s  %s\n' "$Y" "$N" "$1"; WARNINGS=$((WARNINGS + 1))
+    [ -z "$WARN_FILE" ] || printf '%s\n' "$1" >> "$WARN_FILE"
+}
 bad()   { printf '  %sFAIL%s  %s\n' "$R" "$N" "$1"; BLOCKERS=$((BLOCKERS + 1)); }
 info()  { printf '  %s      %s%s\n' "$D" "$1" "$N"; }
 WARNINGS=0
@@ -158,12 +255,18 @@ state_get()  { [ -f "$STATE_FILE" ] && grep "^$1=" "$STATE_FILE" | tail -1 | cut
 start_log() {
     mkdir -p "$LOG_DIR"
     chmod 700 "$STATE_DIR" 2>/dev/null || echo "WARNING: couldn't restrict permissions on $STATE_DIR" >&2
-    LOG_FILE="$LOG_DIR/install-$(date +%Y%m%d-%H%M%S).log"
+    LOG_FILE="$LOG_DIR/${ACTION:-install}-$(date +%Y%m%d-%H%M%S).log"
     # Keep the ten most recent logs.
-    find "$LOG_DIR" -maxdepth 1 -name 'install-*.log' -printf '%T@ %p\n' 2>/dev/null | sort -rn | awk 'NR>10 {print $2}' | xargs -r rm -f
-    # 9>&-: the logger must not hold the install lock (see acquire_lock).
-    exec > >(tee -a "$LOG_FILE" 9>&-) 2>&1
-    echo "AetherOS installer — action=$ACTION mode=$MODE interface=$INTERFACE — $(date)"
+    find "$LOG_DIR" -maxdepth 1 -name '*.log' -printf '%T@ %p\n' 2>/dev/null | sort -rn | awk 'NR>10 {print $2}' | xargs -r rm -f
+    if [ "$UI_LIVE" -eq 1 ]; then
+        # The terminal shows the live panel; the full output goes to the log.
+        exec >> "$LOG_FILE" 2>&1
+    else
+        # 9>&-: the logger must not hold the install lock (see acquire_lock).
+        exec > >(tee -a "$LOG_FILE" 9>&-) 2>&1
+    fi
+    echo "AetherOS installer $AETHER_VERSION — action=$ACTION mode=$MODE interface=$INTERFACE — $(date)"
+    echo "Components: $COMPONENTS"
     echo "Repository: $REPO_DIR ($(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo 'not a git checkout'))"
 }
 
@@ -181,15 +284,10 @@ acquire_lock() {
 }
 
 # ── system facts ────────────────────────────────────────────────────────
-OS_ID="unknown"; OS_VERSION="0"; OS_VARIANT=""; ARCH="$(uname -m)"
-if [ -r /etc/os-release ]; then
-    # shellcheck source=/dev/null
-    OS_ID="$(. /etc/os-release; echo "${ID:-unknown}")"
-    # shellcheck source=/dev/null
-    OS_VERSION="$(. /etc/os-release; echo "${VERSION_ID:-0}")"
-    # shellcheck source=/dev/null
-    OS_VARIANT="$(. /etc/os-release; echo "${VARIANT_ID:-}")"
-fi
+detect_system
+OS_ID="$DET_OS_ID"; OS_VERSION="$DET_OS_VERSION"; OS_VARIANT=""; ARCH="$DET_ARCH"
+# shellcheck source=/dev/null
+[ -r /etc/os-release ] && OS_VARIANT="$(. /etc/os-release; echo "${VARIANT_ID:-}")"
 # Test hook: lets the installer tests exercise Fedora code paths on any host.
 OS_ID="${AETHER_TEST_OS_ID:-$OS_ID}"; OS_VERSION="${AETHER_TEST_OS_VERSION:-$OS_VERSION}"
 
@@ -197,76 +295,14 @@ DNF=""
 if command -v dnf5 >/dev/null 2>&1; then DNF="dnf5"; elif command -v dnf >/dev/null 2>&1; then DNF="dnf"; fi
 dnf_is_v5() { [ "$DNF" = "dnf5" ] || { [ -n "$DNF" ] && "$DNF" --version 2>/dev/null | grep -qi 'dnf5'; }; }
 
-read_pkgs() { sed -e 's/#.*//' -e 's/[[:space:]]*$//' -e 's/^[[:space:]]*//' "$1" | awk 'NF'; }
-
-package_lists() {
-    echo "$REPO_DIR/packages/fedora/packages.txt"
-    case "$MODE" in
-        recommended) echo "$REPO_DIR/packages/fedora/recommended.txt" ;;
-        complete) echo "$REPO_DIR/packages/fedora/recommended.txt"; echo "$REPO_DIR/packages/fedora/optional.txt"; echo "$REPO_DIR/packages/fedora/advanced.txt" ;;
-    esac
-    if [ "$INTERFACE" = classic ]; then
-        echo "$REPO_DIR/packages/fedora/classic.txt"
-        [ "$MODE" = complete ] && echo "$REPO_DIR/packages/fedora/classic-extra.txt"
-    fi
+# The managed paths of the selected components (plus AetherOS's commands).
+selected_targets() {
+    local id g
+    for g in bin systemd; do aether_group_targets_rel "$g"; done
+    for id in $COMPONENTS; do
+        for g in $(comp_groups "$id"); do aether_group_targets_rel "$g"; done
+    done | while IFS= read -r rel; do echo "$HOME/$rel"; done
 }
-
-# Sort the wanted packages into installed / available / unavailable by asking
-# rpm and the *enabled* repositories — no package name is assumed to exist.
-PKG_INSTALLED=(); PKG_AVAILABLE=(); PKG_MISSING=()
-REPOQUERY_FAILED=0
-# A list line "a|b" is a group of alternatives: satisfied if any is
-# installed, otherwise the first one the repositories offer is installed.
-classify_packages() {
-    local groups=() list pkg avail line
-    while IFS= read -r list; do
-        [ -f "$list" ] || continue
-        while IFS= read -r line; do
-            # The same package can be in two lists; ask about it once.
-            [[ " ${groups[*]} " == *" $line "* ]] || groups+=("$line")
-        done < <(read_pkgs "$list")
-    done < <(package_lists)
-    PKG_INSTALLED=(); PKG_AVAILABLE=(); PKG_MISSING=()
-    local pending=() unresolved=() alts alt found
-    for line in "${groups[@]}"; do
-        IFS='|' read -r -a alts <<< "$line"
-        found=""
-        for alt in "${alts[@]}"; do
-            if rpm -q --quiet "$alt" 2>/dev/null || rpm -q --quiet --whatprovides "$alt" 2>/dev/null; then found="$alt"; break; fi
-        done
-        if [ -n "$found" ]; then
-            PKG_INSTALLED+=("$found")
-        else
-            unresolved+=("$line")
-            pending+=("${alts[@]}")
-        fi
-    done
-    [ ${#unresolved[@]} -eq 0 ] && return 0
-    if [ -z "$DNF" ]; then
-        for line in "${unresolved[@]}"; do PKG_MISSING+=("${line%%|*}"); done
-        return 0
-    fi
-    # One repoquery for everything. --qf needs an explicit newline on dnf5.
-    local rq_rc=0
-    avail="$("$DNF" -q repoquery --available --qf '%{name}\n' "${pending[@]}" 2>/dev/null)" || rq_rc=$?
-    if [ "$rq_rc" -ne 0 ]; then
-        # Don't report every package as "not available" when the query itself failed.
-        warn "dnf repoquery failed (exit $rq_rc; offline or repository error) — package availability is unknown"
-        REPOQUERY_FAILED=1
-    fi
-    avail="$(printf '%s\n' "$avail" | sed 's/\\n$//' | sort -u)"
-    for line in "${unresolved[@]}"; do
-        IFS='|' read -r -a alts <<< "$line"
-        found=""
-        for alt in "${alts[@]}"; do
-            if grep -qx "$alt" <<< "$avail"; then found="$alt"; break; fi
-        done
-        if [ -n "$found" ]; then PKG_AVAILABLE+=("$found"); else PKG_MISSING+=("${alts[0]}"); fi
-    done
-}
-
-# repos.conf: package|copr-owner/project|why
-copr_for() { awk -F'|' -v p="$1" '$0 !~ /^[[:space:]]*#/ && $1 == p {print $2; exit}' "$REPO_DIR/packages/fedora/repos.conf" 2>/dev/null; }
 
 # ── preflight ───────────────────────────────────────────────────────────
 preflight() {
@@ -296,7 +332,7 @@ preflight() {
         if [ -n "$DNF" ]; then ok "Package manager: $DNF$(dnf_is_v5 && echo ' (DNF5)' || echo ' (DNF4)')"; else bad "dnf not found."; fi
         if command -v sudo >/dev/null 2>&1; then ok "sudo available (used only for package installation)"; else bad "sudo not found: packages can't be installed."; fi
     fi
-    if command -v qs >/dev/null 2>&1 || command -v quickshell >/dev/null 2>&1; then
+    if [ "$INSTALL_QUICKSHELL" -eq 1 ] && { command -v qs >/dev/null 2>&1 || command -v quickshell >/dev/null 2>&1; }; then
         local qsv
         qsv="$( (qs --version 2>/dev/null || quickshell --version 2>/dev/null) | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
         if [ -z "$qsv" ]; then
@@ -311,9 +347,14 @@ preflight() {
         if command -v "$tool" >/dev/null 2>&1; then ok "$tool found"; else warn "$tool not found (it is in the package list)"; fi
     done
 
-    local free_kb
-    free_kb="$(df -Pk "$HOME" 2>/dev/null | awk 'NR==2 {print $4}')"
-    if [ -n "$free_kb" ] && [ "$free_kb" -lt 1048576 ]; then warn "Less than 1 GiB free in $HOME."; else ok "Disk space in \$HOME"; fi
+    if [ "$DET_DISK_FREE_MB" -gt 0 ] && [ "$DET_DISK_FREE_MB" -lt 1024 ]; then warn "Less than 1 GiB free in $HOME."; else ok "Disk space: $DET_DISK"; fi
+    if [ "$DET_RAM_MB" -gt 0 ] && [ "$DET_RAM_MB" -lt 3800 ]; then warn "Less than 4 GiB of memory: use --mode minimal and the 'eco' quality tier."; else ok "Memory: $DET_RAM"; fi
+    local g
+    for g in "${DET_GPUS[@]}"; do info "GPU: $g"; done
+    case "$DET_GPU_VENDORS" in
+        *nvidia*) [ "$DET_NVIDIA_DRIVER" -eq 1 ] && ok "NVIDIA proprietary driver in use (kept)" \
+            || info "NVIDIA GPU on nouveau/no driver: nothing is installed or replaced (plan: aether graphics install-nvidia --dry-run)" ;;
+    esac
 
     # Security posture: reported, never changed.
     if command -v getenforce >/dev/null 2>&1; then
@@ -323,20 +364,18 @@ preflight() {
         esac
     fi
 
-    local dm=""
-    # No display-manager link is a normal answer (TTY login), not an error.
-    dm="$(basename "$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null || true)" .service)"
-    if [ -n "$dm" ] && [ "$dm" != "display-manager" ]; then
-        ok "Display manager: $dm (kept; pick 'Hyprland' in its session menu)"
+    if [ "$DET_DM" != none ]; then
+        ok "Display manager: $DET_DM (kept; pick 'Hyprland' in its session menu)"
     else
         warn "No display manager detected: start the session with 'Hyprland' from a TTY."
     fi
 
     ok "Interface: $INTERFACE$([ "$INTERFACE" = classic ] && echo ' (Waybar, Rofi, SwayNC, Wlogout, Hyprlock, swww)' || echo ' (Quickshell shell)')"
+    info "Components: $COMPONENTS"
     local running="" procs=(mako dunst)
     [ "$INTERFACE" = aether ] && procs+=(waybar swaync)
     for proc in "${procs[@]}"; do
-        pgrep -x "$proc" >/dev/null 2>&1 && running="$running $proc"
+        pgrep -u "$(id -u)" -x "$proc" >/dev/null 2>&1 && running="$running $proc"
     done
     [ -n "$running" ] && warn "Running now:$running — AetherOS starts its own bar/notifications; these would overlap in a Hyprland session."
 
@@ -353,229 +392,36 @@ preflight() {
             fi
             found=1
         fi
-    done < <(aether_targets)
+    done < <(selected_targets)
     [ "$found" -eq 0 ] && ok "Nothing in the way at the managed paths."
     [ -f "$STATE_FILE" ] && ! state_done complete && info "An earlier install was interrupted; --install resumes it (--restart starts over)."
     return 0
 }
 
-plan_packages() {
-    step "Packages (mode: $MODE)"
-    if [ "$INSTALL_PACKAGES" -eq 0 ]; then info "--no-packages: skipping."; return 0; fi
-    if [ "$OS_ID" != "fedora" ] || [ -z "$DNF" ]; then info "Not Fedora/dnf: skipping."; return 0; fi
-    classify_packages
-    ok "${#PKG_INSTALLED[@]} already installed"
-    if [ ${#PKG_AVAILABLE[@]} -gt 0 ]; then
-        info "To install (${#PKG_AVAILABLE[@]}): ${PKG_AVAILABLE[*]}"
-    fi
-    local pkg copr
-    if [ "$REPOQUERY_FAILED" -eq 1 ]; then
-        info "Availability unknown for: ${PKG_MISSING[*]} (repository query failed); dnf will report anything missing at install time."
+# run_step <state-name> <label> <command…>: a resumable, numbered step.
+run_step() {
+    local name="$1" label="$2"; shift 2
+    if [ "$DRY" -eq 0 ] && state_done "$name"; then
+        UI_STEP_N=$((UI_STEP_N + 1))
+        printf '\n%s==> %s%s %s(already done; --restart to redo)%s\n' "$B" "$name" "$N" "$D" "$N"
+        [ "$UI_LIVE" -eq 1 ] && printf '  %s%s%s [%d/%d] %s %s(already done)%s\n' "$U_OK" "$U_TICK" "$U_N" "$UI_STEP_N" "$UI_STEP_TOTAL" "$label" "$U_D" "$U_N" > "$UI_TTY"
+        UI_DONE+=("$label")
         return 0
     fi
-    for pkg in "${PKG_MISSING[@]}"; do
-        copr="$(copr_for "$pkg")"
-        if [ -n "$copr" ]; then
-            warn "$pkg is not in your enabled repositories. Available from COPR $copr (https://copr.fedorainfracloud.org/coprs/$copr/)."
-        else
-            warn "$pkg is not available for Fedora $OS_VERSION in your enabled repositories — skipped; its feature reports itself unavailable."
-        fi
-    done
-    return 0
+    ui_task "$label" "$@"
+    [ "$UI_LAST_RC" -ne 0 ] || state_mark "$name"
 }
 
-install_packages() {
-    [ "$INSTALL_PACKAGES" -eq 1 ] && [ "$OS_ID" = "fedora" ] && [ -n "$DNF" ] || return 0
-    # COPR repositories, only for packages that are otherwise unobtainable,
-    # one explicit question each.
-    local pkg copr enabled_any=0
-    declare -A asked=()
-    if [ "$REPOQUERY_FAILED" -eq 1 ]; then
-        # Unknown availability: don't offer third-party repositories on a guess.
-        PKG_AVAILABLE+=("${PKG_MISSING[@]}")
-        PKG_MISSING=()
-    fi
-    for pkg in "${PKG_MISSING[@]}"; do
-        copr="$(copr_for "$pkg")"
-        [ -n "$copr" ] || continue
-        [ -n "${asked[$copr]:-}" ] && continue
-        asked[$copr]=1
-        echo
-        echo "  $pkg needs the third-party COPR repository '$copr'."
-        echo "  COPR repositories are built by community members, not by Fedora."
-        if [ "$ENABLE_COPR" -eq 1 ] || confirm_explicit "Enable COPR $copr?"; then
-            run sudo "$DNF" copr enable -y "$copr" && enabled_any=1
-            state_set "copr" "$copr"
-        fi
-    done
-    [ "$enabled_any" -eq 1 ] && [ "$DRY" -eq 0 ] && classify_packages
-
-    if [ ${#PKG_AVAILABLE[@]} -eq 0 ]; then ok "No packages to install."; return 0; fi
-    echo "  sudo $DNF install ${PKG_AVAILABLE[*]}"
-    if confirm "Install these ${#PKG_AVAILABLE[@]} packages?"; then
-        run sudo "$DNF" install -y "${PKG_AVAILABLE[@]}"
-        state_set "installed_pkgs" "${PKG_AVAILABLE[*]}"
-    else
-        warn "Packages skipped. Features that need them will report 'unavailable'."
-    fi
-}
-
-install_quickshell() {
-    [ "$INSTALL_QUICKSHELL" -eq 1 ] && [ "$INSTALL_PACKAGES" -eq 1 ] || return 0
-    step "Quickshell"
-    if command -v qs >/dev/null 2>&1 || command -v quickshell >/dev/null 2>&1; then
-        ok "Quickshell already installed ($(command -v qs || command -v quickshell))"
-        return 0
-    fi
-    if [ "$DRY" -eq 1 ]; then
-        info "Quickshell is not installed. --install would try, in this order:"
-        info "  1. the 'quickshell' package from your enabled repositories"
-        info "  2. the COPR in packages/fedora/repos.conf (asks first)"
-        info "  3. a source build from https://github.com/quickshell-mirror/quickshell (asks first)"
-        return 0
-    fi
-    if rpm -q --quiet quickshell 2>/dev/null; then ok "quickshell package installed"; return 0; fi
-    echo "  Quickshell was not installed by the package step."
-    echo "  It can be built from its official source repository instead"
-    echo "  (https://github.com/quickshell-mirror/quickshell, installs to /usr/local)."
-    if ! confirm_explicit "Clone, build and install Quickshell from source now?"; then
-        warn "Quickshell not installed: the shell can't start until 'qs' exists."
-        return 0
-    fi
-    local build_dir
-    build_dir="$(mktemp -d)"
-    # shellcheck disable=SC2064 # expand now: build_dir is local
-    trap "rm -rf '$build_dir'" RETURN
-    git clone --depth 1 https://github.com/quickshell-mirror/quickshell "$build_dir/quickshell"
-    echo "  Building commit $(git -C "$build_dir/quickshell" rev-parse HEAD) as your user…"
-    cmake -S "$build_dir/quickshell" -B "$build_dir/quickshell/build" -GNinja -DCMAKE_BUILD_TYPE=Release
-    cmake --build "$build_dir/quickshell/build"
-    echo "  The build finished. Installing it to /usr/local needs root:"
-    echo "    sudo cmake --install $build_dir/quickshell/build"
-    if confirm_explicit "Install the build?"; then
-        sudo cmake --install "$build_dir/quickshell/build"
-        state_set "quickshell" "source:/usr/local"
-    fi
-}
-
-do_backup() {
-    step "Backing up existing configuration"
-    if [ "$DRY" -eq 1 ]; then info "would run scripts/backup.sh (archive under ~/.aetheros-backups/)"; return 0; fi
-    local out archive
-    out="$(bash "$REPO_DIR/scripts/backup.sh")"
-    printf '%s\n' "${out//$'\n'/$'\n'  }" | sed '1s/^/  /'
-    archive="$(sed -n 's/^Backup complete: //p' <<< "$out")"
-    # Only the first backup is the pre-AetherOS state rollback wants.
-    [ -n "$archive" ] && [ -z "$(state_get first_backup)" ] && state_set first_backup "$archive"
-    return 0
-}
-
-do_links() {
-    step "Linking configuration"
-    local args=()
-    [ "$DRY" -eq 1 ] && args+=(--dry-run)
-    if [ "$WITH_ZSHRC" -eq 0 ] && [ -e "$HOME/.zshrc" ] && [[ "$(readlink -f "$HOME/.zshrc" 2>/dev/null || true)" != "$REPO_DIR"/* ]]; then
-        if [ "$DRY" -eq 1 ] || ! confirm_explicit "Replace your existing ~/.zshrc with AetherOS's? (yours is moved to ~/.zshrc.bak.<timestamp>)"; then
-            args+=(--keep-zshrc)
-        fi
-    fi
-    args+=(--interface "$INTERFACE")
-    bash "$REPO_DIR/scripts/setup-symlinks.sh" "${args[@]}" | sed 's/^/  /'
-}
-
-do_fonts() {
-    [ "$INSTALL_FONTS" -eq 1 ] || return 0
-    step "Fonts"
-    if command -v fc-list >/dev/null 2>&1 && fc-list 2>/dev/null | grep -i "Nerd Font" >/dev/null; then
-        ok "A Nerd Font is installed"
-        return 0
-    fi
-    if [ "$DRY" -eq 1 ]; then bash "$REPO_DIR/scripts/install-fonts.sh" --dry-run | sed 's/^/  /'; return 0; fi
-    echo "  The bar and menu icons need a Nerd Font, which Fedora doesn't package."
-    echo "  JetBrainsMono Nerd Font $(sed -n 's/^VERSION="\(.*\)"/\1/p' "$REPO_DIR/scripts/install-fonts.sh") can be downloaded from GitHub (checksum-verified) to ~/.local/share/fonts."
-    if confirm "Download and install it?"; then
-        bash "$REPO_DIR/scripts/install-fonts.sh" | sed 's/^/  /' || warn "font installation failed — icons will show as boxes (retry: scripts/install-fonts.sh)"
-    else
-        warn "No Nerd Font: icons will show as boxes. Install later with scripts/install-fonts.sh"
-    fi
-}
-
-do_configure() {
-    step "Per-machine configuration"
-    if ! command -v python3 >/dev/null 2>&1; then warn "python3 missing: hardware detection and settings migration skipped."; return 0; fi
-    if [ "$DRY" -eq 1 ]; then
-        info "would run: aether-interface set $INTERFACE (select the interface, its services and colours)"
-        info "would run: aether config migrate         (upgrade settings from an older AetherOS)"
-        info "would run: aether hyprland compat        (rules/gestures for the installed Hyprland)"
-        info "would run: aether graphics configure     (GPU environment for this machine)"
-        info "would run: aether theme apply            (terminal + border colours)"
-        info "would run: aether idle apply             (hypridle timings)"
-        info "would run: scripts/build-shaders.sh      (compile shaders for the installed Qt)"
-        return 0
-    fi
-    try_step "aether-interface set $INTERFACE" bash "$REPO_DIR/scripts/bin/aether-interface" set "$INTERFACE" --no-reload
-    aether config migrate || warn "settings migration reported a problem (aether config validate)"
-    try_step "aether hyprland compat" aether hyprland compat
-    try_step "aether graphics configure" aether graphics configure
-    try_step "aether theme apply" aether theme apply
-    try_step "aether idle apply" aether idle apply
-    bash "$REPO_DIR/scripts/build-shaders.sh" || warn "shaders not compiled locally: bundled ones are used, with a non-shader fallback"
-    try_step "aether hardware" aether hardware
-    # NVIDIA: only ever a *plan* here; the installer for it asks separately.
-    if [ "$OS_ID" = "fedora" ] && grep -qs "^PCI_ID=10DE:" /sys/bus/pci/devices/*/uevent && [ ! -d /sys/module/nvidia ]; then
-        echo
-        info "An NVIDIA GPU without the proprietary driver was detected."
-        info "Nothing was installed. Review the plan with: aether graphics install-nvidia --dry-run"
-    fi
-}
-
-do_services() {
-    step "systemd user services"
-    local units=() u
-    for u in "$REPO_DIR"/system/systemd/*.service; do
-        # Units without [Install] (the safe-mode fallback) are started on demand.
-        grep -q '^\[Install\]' "$u" || continue
-        # The classic interface runs its own idle daemon and no Quickshell.
-        if [ "$INTERFACE" = classic ]; then
-            case "$(basename "$u")" in aether-shell.service|aether-idle.service) continue ;; esac
-        fi
-        units+=("$(basename "$u")")
-    done
-    if [ "$DRY" -eq 1 ]; then info "would enable: ${units[*]}"; return 0; fi
-    if systemctl --user daemon-reload 2>/dev/null; then
-        if systemctl --user enable "${units[@]}"; then
-            ok "enabled: ${units[*]}"
-        else
-            warn "systemctl --user enable failed for: ${units[*]} — enable them after logging in: systemctl --user enable ${units[*]}"
-        fi
-    else
-        info "No systemd user session right now; Hyprland starts the services on first login."
-    fi
-}
-
-do_validate() {
+validate_and_report() {
     step "Validation"
-    if [ "$DRY" -eq 1 ]; then info "would run: scripts/doctor.sh or aether-interface doctor, aether hyprland, aether config validate"; return 0; fi
-    if [ "$INTERFACE" = classic ]; then
-        try_step "aether-interface doctor" bash "$REPO_DIR/scripts/bin/aether-interface" doctor
-    else
-        try_step "scripts/doctor.sh" bash "$REPO_DIR/scripts/doctor.sh"
-    fi
-    if command -v python3 >/dev/null 2>&1; then
-        try_step "Hyprland config validation (aether hyprland)" aether hyprland
-        try_step "settings validation (aether config validate)" aether config validate
-    fi
+    if [ "$DRY" -eq 1 ]; then info "would check every component, broken links and duplicate startup, and write a report"; return 0; fi
+    validate_all
+    write_report "$REPORT_FILE"
+    printf '%s %s\n' "$V_FAILS" "$V_WARNS" > "$REPORT_FILE.counts"
+    echo "  Report: $REPORT_FILE"
 }
 
-run_step() {  # run_step <name> <function>
-    if [ "$DRY" -eq 0 ] && state_done "$1"; then
-        printf '\n%s==> %s%s %s(already done; --restart to redo)%s\n' "$B" "$1" "$N" "$D" "$N"
-        return 0
-    fi
-    "$2"
-    state_mark "$1"
-}
-
+PLANNED=0   # 1: the onboarding already ran preflight and the package plan
 do_install() {
     [ "$RESTART" -eq 1 ] && [ "$DRY" -eq 0 ] && rm -f "$STATE_FILE"
     # A finished install starts a fresh run (idempotent re-install).
@@ -585,70 +431,131 @@ do_install() {
         rm -f "$STATE_FILE"
         [ -n "$keep_backup" ] && state_set first_backup "$keep_backup"
     fi
-    preflight
-    if [ "$BLOCKERS" -gt 0 ] && [ "$INSTALL_PACKAGES" -eq 1 ]; then
-        echo; echo "${R}$BLOCKERS blocking problem(s) above. Nothing was changed.${N}"
-        exit 1
-    fi
-    plan_packages
-    if [ "$DRY" -eq 0 ] && [ "$ACTION" != "install" ]; then
-        echo
-        confirm_explicit "Proceed with the installation?" || { echo "Nothing was changed."; exit 0; }
-    fi
-    run_step packages install_packages
-    run_step quickshell install_quickshell
-    run_step backup do_backup
-    run_step links do_links
-    run_step fonts do_fonts
-    run_step configure do_configure
-    run_step services do_services
-    do_validate
-    state_mark complete
-    echo
-    if [ "$DRY" -eq 1 ]; then
-        echo "${B}Dry run complete: nothing was changed.${N}"
-    else
-        if [ "$WARNINGS" -gt 0 ]; then
-            echo "${Y}AetherOS is installed, with $WARNINGS warning(s) — review them above.${N}  Log: $LOG_FILE"
-        else
-            echo "${B}AetherOS is installed.${N}  Log: $LOG_FILE"
+    [ -n "$WARN_FILE" ] || WARN_FILE="$(mktemp)"
+    if [ "$PLANNED" -eq 0 ]; then
+        preflight
+        if [ "$BLOCKERS" -gt 0 ] && [ "$INSTALL_PACKAGES" -eq 1 ]; then
+            echo; echo "${R}$BLOCKERS blocking problem(s) above. Nothing was changed.${N}"
+            exit 1
         fi
-        echo "  Log out, choose the Hyprland session at your display manager, and log in."
+        plan_packages
+        if [ "$DRY" -eq 0 ] && [ "$ACTION" = "" ]; then
+            echo
+            confirm_explicit "Proceed with the installation?" || { echo "Nothing was changed."; exit 0; }
+        fi
+    fi
+    [ "$DRY" -eq 1 ] || { mkdir -p "$(dirname "$(comp_saved_file)")"; echo "$COMPONENTS" > "$(comp_saved_file)"; }
+    REPORT_FILE="$STATE_DIR/reports/install-$(date +%Y%m%d-%H%M%S).txt"
+
+    local id total=6
+    [ "$INSTALL_QUICKSHELL" -eq 1 ] && total=$((total + 1))
+    for id in $COMPONENTS; do total=$((total + 1)); done
+    ui_steps_begin "$total"
+    run_step packages "Downloading and installing dependencies" install_packages
+    [ "$INSTALL_QUICKSHELL" -eq 1 ] && run_step quickshell "Installing Quickshell" install_quickshell
+    run_step backup "Backing up your current configuration" do_backup
+    run_step links "Deploying AetherOS commands and services" deploy_core
+    for id in $COMPONENTS; do
+        run_step "component-$id" "$(comp_step "$id")" deploy_component "$id"
+    done
+    run_step configure "Final configuration" do_configure
+    run_step services "Enabling user services" do_services
+    ui_task "Validating the installation" validate_and_report
+    [ ${#UI_FAILED[@]} -eq 0 ] && state_mark complete
+    finish_summary install
+    [ ${#UI_FAILED[@]} -eq 0 ] || return 1
+}
+
+# The final summary, on the terminal (and in the log).
+finish_summary() {
+    local what="$1" id installed=() skipped=() failed=() counts vf=0 vw=0 warns=0
+    [ -n "$WARN_FILE" ] && [ -f "$WARN_FILE" ] && warns="$(wc -l < "$WARN_FILE")"
+    if [ -n "$REPORT_FILE" ] && [ -f "$REPORT_FILE.counts" ]; then read -r vf vw < "$REPORT_FILE.counts"; fi
+    for id in $(comp_list "$INTERFACE"); do
+        if [[ " ${UI_FAILED[*]-} " == *" $(comp_step "$id") "* ]]; then failed+=("$id")
+        elif [[ " $COMPONENTS " == *" $id "* ]]; then installed+=("$id")
+        else skipped+=("$id"); fi
+    done
+    local out
+    out="$(
+        echo
+        if [ "$DRY" -eq 1 ]; then echo "${B}Dry run complete: nothing was changed.${N}"; exit 0; fi
+        if [ ${#UI_FAILED[@]} -eq 0 ]; then echo "${B}${G}✔ AetherOS $what completed successfully${N}"
+        else echo "${B}${R}✖ AetherOS $what finished with ${#UI_FAILED[@]} failed step(s)${N}: ${UI_FAILED[*]}"; fi
+        [ "$what" = install ] && {
+            echo "  Installed:  ${installed[*]:-none}"
+            echo "  Skipped:    ${skipped[*]:-none}"
+            echo "  Failed:     ${failed[*]:-none}"
+        }
+        echo "  Checks:     $vf failed, $vw warning(s); $warns installer warning(s)"
+        local backup; backup="$(state_get last_backup | sed "s|^$HOME|~|")"
+        echo "  Backup:     ${backup:-none (nothing was in the way)}${D}; anything replaced is also beside its path as *.bak.<time>${N}"
+        echo "  Log:        ${LOG_FILE/#$HOME/\~}"
+        [ -n "$REPORT_FILE" ] && [ -f "$REPORT_FILE" ] && echo "  Report:     ${REPORT_FILE/#$HOME/\~}"
+        echo
+        echo "  Next: log out, choose the Hyprland session at your login screen, and log in."
         if [ "$INTERFACE" = classic ]; then
             echo "  Keys: Super+D apps · Super+A settings · Super+H all keybindings · Super+Esc power"
-            echo "  If something is missing:        aether-interface doctor"
+            echo "  Already in Hyprland? Reload the desktop: Super+Ctrl+R (aether-classic-start --reload)"
         else
             echo "  If the shell misbehaves:        aether recover"
         fi
         echo "  If Hyprland won't start (TTY):  Hyprland -c ~/.config/hypr/recovery.conf"
-        echo "  To undo everything:             ./install.sh --rollback"
+        echo "  To undo everything:             ./restore.sh   (or ./install.sh --rollback)"
+        echo
+        echo "  ⭐ Enjoying AetherOS? Star it: $AETHER_REPO_WEB — © 2026 Neelampalli Charan Balaji"
+    )"
+    printf '%s\n' "$out"
+    [ "$UI_LIVE" -eq 1 ] && printf '%s\n' "$out" > "$UI_TTY"
+    return 0
+}
+
+update_links() {
+    step "Re-linking the configuration"
+    local args=(--interface "$INTERFACE")
+    [ "$WITH_ZSHRC" -eq 1 ] || args+=(--keep-zshrc)
+    bash "$REPO_DIR/scripts/setup-symlinks.sh" "${args[@]}" | sed 's/^/  /'
+}
+
+pull_updates() {
+    step "Fetching updates"
+    if [ ! -d "$REPO_DIR/.git" ]; then info "Not a git checkout: skipping pull."; return 0; fi
+    if [ -n "$(git -C "$REPO_DIR" status --porcelain --untracked-files=no 2>/dev/null)" ]; then
+        warn "Local changes in $REPO_DIR (your live configs are links into it). Pulling with --ff-only."
     fi
+    if ! aether snapshot create --label pre-update >/dev/null 2>&1; then
+        warn "couldn't snapshot settings before updating (aether snapshot create) — continuing"
+    fi
+    local before; before="$(git -C "$REPO_DIR" rev-parse --short HEAD)"
+    with_pty git -C "$REPO_DIR" pull --ff-only --progress
+    echo "  $before -> $(git -C "$REPO_DIR" rev-parse --short HEAD)"
 }
 
 do_update() {
-    step "Updating AetherOS"
-    if [ -d "$REPO_DIR/.git" ]; then
-        if [ -n "$(git -C "$REPO_DIR" status --porcelain --untracked-files=no 2>/dev/null)" ]; then
-            warn "Local changes in $REPO_DIR (your live configs are links into it). Pulling with --ff-only."
-        fi
-        if ! aether snapshot create --label pre-update >/dev/null 2>&1; then
-            warn "couldn't snapshot settings before updating (aether snapshot create) — continuing"
-        fi
-        git -C "$REPO_DIR" pull --ff-only || { bad "git pull failed; resolve it (git status) and re-run."; exit 1; }
-    else
-        info "Not a git checkout: skipping pull."
+    WARN_FILE="$(mktemp)"
+    REPORT_FILE="$STATE_DIR/reports/update-$(date +%Y%m%d-%H%M%S).txt"
+    local total=5
+    [ "$UPDATE_PACKAGES" -eq 1 ] && total=6
+    ui_steps_begin "$total"
+    ui_task "Fetching updates" pull_updates
+    if [ "$UI_LAST_RC" -ne 0 ]; then
+        bad "git pull failed; resolve it (git -C $REPO_DIR status) and re-run."
+        finish_summary update
+        return 1
     fi
-    do_links
-    do_configure
-    do_services
-    do_validate
-    echo
+    if [ "$UPDATE_PACKAGES" -eq 1 ]; then plan_packages > /dev/null; ui_task "Installing new dependencies" install_packages; fi
+    ui_task "Re-linking the configuration" update_links
+    ui_task "Final configuration" do_configure
+    ui_task "Enabling user services" do_services
+    ui_task "Validating the installation" validate_and_report
+    finish_summary update
     if [ "$INTERFACE" = classic ]; then
-        echo "${B}Update complete.${N} Apply it with: aether-classic-start --reload"
+        echo "${B}Apply it with:${N} aether-classic-start --reload (Super+Ctrl+R)"
     else
-        echo "${B}Update complete.${N} Apply it with: aether reload"
+        echo "${B}Apply it with:${N} aether reload"
     fi
     echo "  If something regressed: aether snapshot restore latest   (settings)   or   git -C $REPO_DIR reset --hard ORIG_HEAD   (files)"
+    [ ${#UI_FAILED[@]} -eq 0 ] || return 1
 }
 
 do_uninstall() {
@@ -671,15 +578,302 @@ do_rollback() {
     confirm "Continue?" || { echo "Nothing was changed."; exit 0; }
     bash "$REPO_DIR/scripts/uninstall.sh" --yes | sed 's/^/  /'
     bash "$REPO_DIR/scripts/rollback.sh" | sed 's/^/  /'
-    local pkgs copr
-    pkgs="$(state_get installed_pkgs)"; copr="$(state_get copr)"
+    local pkgs copr sddm
+    pkgs="$(state_get installed_pkgs)"; copr="$(state_get copr)"; sddm="$(state_get sddm_theme)"
     echo
     [ -n "$pkgs" ] && echo "  Packages this installer added (remove with 'sudo dnf remove …' or 'sudo dnf history undo'): $pkgs"
     [ -n "$copr" ] && echo "  COPR enabled by this installer (disable with: sudo dnf copr disable $copr)"
-    rm -f "$STATE_FILE"
+    [ -n "$sddm" ] && echo "  SDDM theme selected by this installer (undo with: sudo rm $sddm)"
+    rm -f "$STATE_FILE" "$(comp_saved_file)" "$(aether_groups_file)"
     echo "  ${B}Rollback complete.${N} Your previous session entries and display manager were never changed."
 }
 
+# Backup archives, newest first.
+list_archives() {
+    find "$HOME/.aetheros-backups" -maxdepth 1 -name 'aetheros-backup-*.tar.gz' -printf '%T@ %p\n' 2>/dev/null | sort -rn | cut -d' ' -f2-
+}
+
+do_restore() {
+    if [ -n "$ARCHIVE" ]; then
+        local args=("$ARCHIVE"); [ "$ASSUME_YES" -eq 1 ] && args+=(--yes)
+        bash "$REPO_DIR/scripts/restore.sh" "${args[@]}"
+        return
+    fi
+    if ui_has_tty; then tui_restore; return; fi
+    echo "Backups (newest first):"; list_archives | sed 's/^/  /'
+    echo "Restore one with: ./restore.sh --archive FILE   ·   undo the whole install: ./install.sh --rollback"
+}
+
+# ── onboarding (an interactive terminal, no action flag) ────────────────
+tui_welcome() {
+    printf '\033[2J\033[H' > "$UI_TTY"
+    ui_banner "$REPO_DIR/assets/logo.txt" "$AETHER_VERSION"
+    detect_summary | sed 's/^/  /' > "$UI_TTY"
+    ui_say ""
+    local p prereq=""
+    for p in git sudo python3 curl; do command -v "$p" >/dev/null 2>&1 || prereq+=" $p"; done
+    [ -n "$DNF" ] || prereq+=" dnf"
+    if [ -n "$prereq" ]; then ui_say "  ${U_WARN}Missing prerequisites:$prereq${U_N}"
+    else ui_say "  ${U_OK}${U_TICK}${U_N} Prerequisites: git, sudo, python3, curl, $DNF — all present"; fi
+    [ "$OS_ID" = fedora ] || ui_say "  ${U_WARN}Not Fedora ($OS_ID): only a configs-only install is possible.${U_N}"
+    ui_say ""
+    printf '  Press Enter to continue ' > "$UI_TTY"; IFS= read -r _ < "$UI_TTY" || true
+}
+
+tui_info() {
+    local f; f="$(mktemp)"
+    cat > "$f" <<EOF
+AetherOS Dotfiles $AETHER_VERSION
+© 2026 Neelampalli Charan Balaji — GPL-3.0-or-later
+$AETHER_REPO_WEB
+
+WHAT IT INSTALLS
+$(for id in $(comp_list "$INTERFACE"); do printf '  • %s\n' "$(comp_label "$id")"; done)
+
+WHERE
+  Configs are symlinked from $REPO_DIR into
+  ~/.config/{hypr,waybar,rofi,quickshell,kitty,swaync,gtk-3.0,gtk-4.0,…}
+  Commands: ~/.local/bin/aether*      Settings: ~/.config/aether-shell
+  Logs and reports: ~/.local/state/aether/
+
+YOUR FILES ARE SAFE
+  • Everything at those paths is archived to ~/.aetheros-backups/ first.
+  • Anything in the way is moved aside to <path>.bak.<time>, never deleted.
+  • Your wallpapers and Hyprland scripts are kept; your old keybinds are saved
+    (commented out) in ~/.config/aether-shell/hypr/user.conf.
+  • "Restore Previous Configuration" puts it all back.
+
+NEVER DONE
+  Running as root, rebooting by itself, changing SELinux, firewall, Secure Boot,
+  the bootloader or kernel, installing or replacing GPU drivers, replacing your
+  display manager, or running downloaded scripts without verification
+  (the Nerd Font is SHA-256 checked; COPR repositories are asked one by one).
+
+PREREQUISITES
+  Fedora $MIN_FEDORA or newer (not Atomic), a user with sudo, internet access,
+  about 1 GiB free. sudo is asked once, only when packages are installed.
+
+WITHOUT MENUS
+  ./install.sh --install --components hyprland,waybar,rofi
+  ./install.sh --dry-run · --check · --update · --restore · --rollback
+  ./install.sh --list-components · --help
+EOF
+    ui_textbox "Installation information" "$f"
+    rm -f "$f"
+}
+
+tui_select_components() {
+    local preset sel items=() id
+    preset="$(ui_menu "Choose components" "What would you like to install?" \
+        recommended "Recommended installation — the complete AetherOS desktop" \
+        all "Select all — everything, including the login screen theme" \
+        custom "Custom installation — pick each component" \
+        none "Deselect all — start from nothing and pick")" || return 1
+    case "$preset" in
+        recommended|all) COMPONENTS="$(comp_preset "$preset" "$INTERFACE" | tr '\n' ' ')"; COMPONENTS="${COMPONENTS% }"; return 0 ;;
+    esac
+    local on
+    for id in $(comp_list "$INTERFACE"); do
+        on=off
+        [ "$preset" = custom ] && comp_preset recommended "$INTERFACE" | grep -qx "$id" && on=on
+        items+=("$id" "$(comp_label "$id")" "$on")
+    done
+    sel="$(ui_checklist "Components" "Space toggles · Enter confirms. Unselected parts keep your current configuration." "${items[@]}")" || return 1
+    [ -n "$sel" ] || { ui_msg "Nothing selected" "Select at least one component."; return 1; }
+    COMPONENTS="$(comp_normalize "$INTERFACE" "$sel")"
+}
+
+needs_sudo() {
+    [ "$INSTALL_PACKAGES" -eq 1 ] && [ ${#PKG_AVAILABLE[@]} -gt 0 ] && return 0
+    [ "$ENABLE_COPR" -eq 1 ] && [ -n "$(coprs_needed)" ] && return 0
+    [ "${ENABLE_BLUETOOTH:-0}" = 1 ] && return 0
+    [ "$ENABLE_SDDM_THEME" -eq 1 ]
+}
+
+tui_install() {
+    tui_select_components || return 0
+    [[ " $COMPONENTS " == *" aether-shell "* ]] || INSTALL_QUICKSHELL=0
+    local plan; plan="$(mktemp)"
+    # Same shell (no subshell): the package plan is kept for the steps.
+    WARN_FILE="$(mktemp)"
+    preflight > "$plan" 2>&1
+    plan_packages >> "$plan" 2>&1
+    sed -i 's/\x1b\[[0-9;]*m//g' "$plan"
+    if [ "$BLOCKERS" -gt 0 ] && [ "$INSTALL_PACKAGES" -eq 1 ]; then
+        ui_textbox "Can't install: $BLOCKERS blocking problem(s)" "$plan"
+        return 0
+    fi
+    # Every question is asked now, so the installation itself runs unattended.
+    if [ "$INSTALL_PACKAGES" -eq 1 ] && [ ${#PKG_AVAILABLE[@]} -gt 0 ]; then
+        if ui_yesno "Packages" "${#PKG_AVAILABLE[@]} packages will be installed from your enabled Fedora repositories (sudo dnf install):
+
+$(printf '%s ' "${PKG_AVAILABLE[@]}" | fold -s -w 70)
+
+Install them?"; then ASSUME_YES=1; else INSTALL_PACKAGES=0; fi
+    fi
+    local coprs; coprs="$(coprs_needed)"
+    if [ "$INSTALL_PACKAGES" -eq 1 ] && [ -n "$coprs" ]; then
+        ui_yesno "Community repositories (COPR)" "These packages aren't in your enabled repositories: ${PKG_MISSING[*]}
+
+They are available from these COPR repositories, built by community members (not Fedora):
+$(sed 's/^/  • /' <<< "$coprs")
+
+Enable them?" no && ENABLE_COPR=1
+    fi
+    if [[ " $COMPONENTS " == *" shell "* ]] && [ -e "$HOME/.zshrc" ] && [[ "$(readlink -f "$HOME/.zshrc")" != "$REPO_DIR"/* ]]; then
+        ui_yesno "Your ~/.zshrc" "You already have a ~/.zshrc. Replace it with AetherOS's?
+(Yours is moved to ~/.zshrc.bak.<time>, never deleted.) No keeps yours." no && WITH_ZSHRC=1
+    fi
+    if [[ " $COMPONENTS " == *" fonts "* ]] && ! fc-list 2>/dev/null | grep -qi "Nerd Font"; then
+        ui_yesno "Icon font" "The bar and menu icons need JetBrainsMono Nerd Font (not packaged by Fedora).
+Download it from its GitHub release (SHA-256 verified) to ~/.local/share/fonts?" || INSTALL_FONTS=0
+    fi
+    if [[ " $COMPONENTS " == *" bluetooth "* ]] && ! systemctl is-enabled bluetooth.service >/dev/null 2>&1; then
+        if ui_yesno "Bluetooth" "Enable and start the Bluetooth service (sudo systemctl enable --now bluetooth)?"; then ENABLE_BLUETOOTH=1; else ENABLE_BLUETOOTH=0; fi
+    fi
+    if [[ " $COMPONENTS " == *" login-manager "* ]] && [ "$DET_DM" = sddm ]; then
+        ui_yesno "Login screen" "Install the AetherOS SDDM theme? It is copied to /usr/share/sddm/themes/aether
+and selected by /etc/sddm.conf.d/10-aetheros.conf (delete it to undo)." no && ENABLE_SDDM_THEME=1
+    fi
+    local summary
+    summary="Components ($(wc -w <<< "$COMPONENTS")): $(echo "$COMPONENTS" | sed 's/ /, /g')
+
+Packages: $([ "$INSTALL_PACKAGES" -eq 1 ] && echo "${#PKG_AVAILABLE[@]} to install" || echo "none (skipped)")
+Backup:   ~/.aetheros-backups/ + <path>.bak.<time> for anything replaced
+Interface: $INTERFACE
+
+Nothing is overwritten or deleted, and nothing reboots. Start the installation?
+(Full preflight: choose No and see \"Installation information\".)"
+    if ! ui_yesno "Ready to install" "$summary"; then
+        ui_textbox "Preflight and package plan" "$plan"
+        ui_yesno "Ready to install" "$summary" || { rm -f "$plan"; return 0; }
+    fi
+    printf '\033[2J\033[H' > "$UI_TTY"
+    ui_banner "$REPO_DIR/assets/logo.txt" "$AETHER_VERSION"
+    if needs_sudo; then
+        ui_say "  Administrator rights are needed for: packages / system services. Your password is asked once."
+        if ! sudo -v < "$UI_TTY"; then
+            ui_msg "No administrator rights" "sudo failed: the installation continues without packages or system services."
+            INSTALL_PACKAGES=0; ENABLE_COPR=0; ENABLE_BLUETOOTH=0; ENABLE_SDDM_THEME=0
+        else
+            # Keep the credentials fresh while the installer runs (no inherited lock).
+            ( while kill -0 $$ 2>/dev/null; do sudo -n -v 2>/dev/null; sleep 50; done ) 9>&- &
+        fi
+    fi
+    ui_say "  ${U_B}Installing AetherOS${U_N} — $(wc -w <<< "$COMPONENTS") components. ${U_D}Full log: ~/.local/state/aether/logs/${U_N}"
+    ACTION=install; PLANNED=1; UI_LIVE=1
+    acquire_lock
+    start_log
+    cat "$plan"; rm -f "$plan"
+    local rc=0
+    do_install 9>&- || rc=$?
+    tui_finish "$rc"
+}
+
+tui_finish() {
+    local choice items=()
+    while true; do
+        items=()
+        [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] && items+=(restart "Restart the Hyprland desktop now (config, bar, notifications)")
+        items+=(reboot "Reboot the computer" logs "View the installation log")
+        [ -n "$REPORT_FILE" ] && [ -f "$REPORT_FILE" ] && items+=(report "View the installation report")
+        items+=(exit "Exit")
+        printf '\n  Press Enter for the final menu ' > "$UI_TTY"; IFS= read -r _ < "$UI_TTY" || true
+        choice="$(ui_menu "$([ "${1:-0}" -eq 0 ] && echo 'Installation complete ✔' || echo 'Installation finished with problems')" \
+            "Log out and choose Hyprland at your login screen to start AetherOS.
+Backup: $(b="$(state_get last_backup)"; echo "${b:-none needed (nothing was in the way)}" | sed "s|^$HOME|~|")
+Log: ${LOG_FILE/#$HOME/\~}" "${items[@]}")" || return 0
+        case "$choice" in
+            restart)
+                if [ "$INTERFACE" = classic ]; then setsid -f bash "$REPO_DIR/scripts/bin/aether-classic-start" --reload >/dev/null 2>&1 9>&- || true
+                else setsid -f bash "$REPO_DIR/scripts/bin/aether" reload >/dev/null 2>&1 9>&- || true; fi
+                ui_msg "Desktop restarted" "Hyprland reloaded its configuration and the desktop was restarted.
+For a completely fresh start, log out and back in." ;;
+            reboot)
+                ui_yesno "Reboot" "Reboot the computer now? Save your work first." no && { systemctl reboot; return 0; } ;;
+            logs) ui_textbox "Installation log" "$LOG_FILE" ;;
+            report) ui_textbox "Installation report" "$REPORT_FILE" ;;
+            exit) return 0 ;;
+        esac
+    done
+}
+
+tui_update() {
+    ui_yesno "Update AetherOS" "Pull the latest AetherOS from $AETHER_BRANCH, re-link your components, regenerate
+machine settings and validate. Your settings are snapshotted first
+(undo: aether snapshot restore latest)." || return 0
+    [ -n "$DNF" ] && [ "$OS_ID" = fedora ] && ui_yesno "Packages" "Also install packages that the new version needs (sudo dnf)?" && UPDATE_PACKAGES=1 && ASSUME_YES=1
+    printf '\033[2J\033[H' > "$UI_TTY"
+    ui_banner "$REPO_DIR/assets/logo.txt" "$AETHER_VERSION"
+    [ "$UPDATE_PACKAGES" -eq 1 ] && { sudo -v < "$UI_TTY" || UPDATE_PACKAGES=0; }
+    ACTION=update; UI_LIVE=1
+    COMPONENTS_ARG="" PRESET=""; resolve_components
+    acquire_lock
+    start_log
+    local rc=0
+    do_update 9>&- || rc=$?
+    tui_finish "$rc"
+}
+
+tui_restore() {
+    local choice a items=() n=0
+    choice="$(ui_menu "Restore previous configuration" "What would you like to restore?" \
+        rollback "Undo the AetherOS installation — put my original configs back" \
+        archive "Restore a backup archive from ~/.aetheros-backups" \
+        back "Back")" || return 0
+    case "$choice" in
+        rollback)
+            ui_yesno "Undo the installation" "Remove AetherOS's links and services and move every original file back
+(from the moved-aside list). Packages and your AetherOS settings are kept." no || return 0
+            printf '\033[2J\033[H' > "$UI_TTY"
+            ACTION=rollback; ASSUME_YES=1
+            acquire_lock; start_log
+            do_rollback 9>&-
+            ui_msg "Rollback complete" "Your previous configuration is back. Log: ${LOG_FILE/#$HOME/\~}" ;;
+        archive)
+            while IFS= read -r a; do
+                items+=("$a" "$(basename "$a" .tar.gz | sed 's/aetheros-backup-//')  ($(du -h "$a" | cut -f1))"); n=$((n + 1))
+            done < <(list_archives)
+            [ "$n" -gt 0 ] || { ui_msg "No backups" "No archives in ~/.aetheros-backups yet."; return 0; }
+            a="$(ui_menu "Backup archives" "Newest first. The current state is backed up again before restoring." "${items[@]}")" || return 0
+            ui_yesno "Restore" "Restore $(basename "$a")? Current configs at the managed paths are archived first, then replaced." no || return 0
+            printf '\033[2J\033[H' > "$UI_TTY"
+            bash "$REPO_DIR/scripts/restore.sh" "$a" --yes 9>&- > "$UI_TTY" 2>&1 \
+                && ui_msg "Restored" "$(basename "$a") was restored." || ui_msg "Restore failed" "See the messages above." ;;
+    esac
+}
+
+tui_main() {
+    tui_welcome
+    support_screen
+    local choice note=""
+    [ -f "$STATE_FILE" ] && ! state_done complete && note="
+
+An earlier installation was interrupted — Start Installation resumes it."
+    while true; do
+        choice="$(ui_menu "AetherOS Dotfiles $AETHER_VERSION" "Welcome, ${USER:-friend}! A macOS-inspired Hyprland desktop for Fedora.
+
+$DET_OS · kernel $DET_KERNEL
+$(printf '%s\n' "${DET_GPUS[@]}")
+$DET_RAM · $DET_DESKTOP$note" \
+            install "Start installation" \
+            update "Update existing dotfiles" \
+            restore "Restore previous configuration" \
+            info "Installation information" \
+            support "Support the project ⭐" \
+            exit "Exit")" || exit 0
+        case "$choice" in
+            install) tui_install; exit 0 ;;
+            update) tui_update; exit 0 ;;
+            restore) tui_restore ;;
+            info) tui_info ;;
+            support) support_screen always ;;
+            exit) exit 0 ;;
+        esac
+    done
+}
+
+ui_init
 case "${ACTION:-interactive}" in
     check)
         preflight
@@ -689,8 +883,12 @@ case "${ACTION:-interactive}" in
         echo "${G}Ready to install${N} ($WARNINGS warning(s)). Preview with ./install.sh --dry-run"
         ;;
     dry-run) do_install ;;
-    install|interactive) acquire_lock; start_log; do_install 9>&- ;;
+    interactive)
+        if ui_has_tty && [ -t 1 ]; then tui_main
+        else ACTION=""; acquire_lock; start_log; do_install 9>&-; fi ;;
+    install) acquire_lock; start_log; do_install 9>&- ;;
     update) acquire_lock; start_log; do_update 9>&- ;;
+    restore) do_restore ;;
     uninstall) acquire_lock; start_log; do_uninstall 9>&- ;;
     rollback) acquire_lock; start_log; do_rollback 9>&- ;;
 esac

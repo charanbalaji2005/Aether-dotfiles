@@ -1,6 +1,6 @@
 [Unit]
 Description=AetherOS desktop shell (Quickshell)
-Documentation=https://github.com/OWNER/aetheros-dotfiles
+Documentation=https://github.com/charanbalaji2005/Aether-dotfiles
 PartOf=graphical-session.target
 After=graphical-session.target
 # A broken shell must not spin the CPU: after 4 failed starts in 40 s systemd
