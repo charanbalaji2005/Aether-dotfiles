@@ -23,7 +23,7 @@ aether-shell|aether|1|shell-aether|Aether shell — the Quickshell desktop (pane
 terminal|both|1|kitty,tmux|Kitty terminal — themed from your wallpaper, with tmux
 shell|both|1|zsh,bash|Zsh and shell configuration
 themes|both|1|gtk|GTK themes and icons (adw-gtk3, Papirus)
-wallpapers|both|1|wallpapers|Wallpapers — 22 bundled; your own are kept
+wallpapers|both|1|wallpapers|Wallpapers — 21 bundled; your own are kept
 fonts|both|1|-|Fonts — JetBrains Mono, Noto, Nerd Font icons
 notifications|classic|1|swaync|Notifications — SwayNC centre and popups
 bluetooth|both|1|-|Bluetooth — BlueZ and Blueman

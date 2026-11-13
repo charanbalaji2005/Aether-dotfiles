@@ -83,7 +83,7 @@ Dialogs use whiptail (`newt`, installed on Fedora). `./install.sh --no-tui` (or
 | `terminal` | Kitty, themed from your wallpaper, with tmux |
 | `shell` | Zsh and shell configuration (your `~/.zshrc` is kept unless you say otherwise) |
 | `themes` | GTK themes and icons (adw-gtk3, Papirus) |
-| `wallpapers` | 22 bundled wallpapers; yours are kept |
+| `wallpapers` | 21 bundled wallpapers; yours are kept |
 | `fonts` | JetBrains Mono, Noto, JetBrainsMono Nerd Font (SHA-256 verified download) |
 | `notifications` | SwayNC centre and popups |
 | `bluetooth` | BlueZ and Blueman; the service is enabled only with your yes |
