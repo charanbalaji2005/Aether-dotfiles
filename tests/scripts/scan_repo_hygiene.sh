@@ -43,7 +43,7 @@ while IFS=: read -r file line content; do
     echo "  $file:$line:$content"
     section_found=1
     ANY_FOUND=1
-done < <(grep -rniIE "TODO|FIXME|\bXXX\b" . --exclude-dir=.git --exclude-dir=__pycache__ -n 2>/dev/null)
+done < <(grep -rniIE "TODO|FIXME|\bXXX\b" . --exclude-dir=.git --exclude=.git --exclude-dir=__pycache__ -n 2>/dev/null)
 [ "$section_found" -eq 0 ] && echo "  none found"
 
 echo
@@ -54,7 +54,7 @@ while IFS= read -r hit; do
     echo "  $hit"
     section_found=1
     ANY_FOUND=1
-done < <(grep -rnE "/home/[a-zA-Z0-9_-]+/" . --exclude-dir=.git 2>/dev/null | grep -vE '\$HOME|~/')
+done < <(grep -rnE "/home/[a-zA-Z0-9_-]+/" . --exclude-dir=.git --exclude=.git 2>/dev/null | grep -vE '\$HOME|~/')
 [ "$section_found" -eq 0 ] && echo "  none found"
 
 echo
@@ -70,7 +70,7 @@ while IFS=: read -r file line content; do
     ANY_FOUND=1
 done < <(grep -rniE "not implemented yet|fake data|dummy implementation|return true.*always" \
     --include="*.sh" --include="*.qml" --include="*.conf" \
-    . --exclude-dir=.git -n 2>/dev/null)
+    . --exclude-dir=.git --exclude=.git -n 2>/dev/null)
 [ "$section_found" -eq 0 ] && echo "  none found"
 
 echo

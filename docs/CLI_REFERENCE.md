@@ -1,6 +1,6 @@
 # `aether` command reference
 
-Generated from the CLI's own argument parser by `tools/gen_cli_reference.py` (AetherOS 1.0.0-rc.2).
+Generated from the CLI's own argument parser by `tools/gen_cli_reference.py` (AetherOS 1.0.0).
 Every command supports `--json` where it reports data, never needs root, and logs to
 `~/.local/state/aether/aether.log` (secrets redacted).
 
