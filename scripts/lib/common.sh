@@ -28,6 +28,12 @@ aether_targets_rel() {
 .config/hypr
 .config/quickshell/aether-shell
 .config/kitty
+.config/waybar
+.config/rofi
+.config/swaync
+.config/wlogout
+.config/wallust
+.config/fastfetch
 .zshrc
 .config/gtk-3.0/settings.ini
 .config/gtk-3.0/gtk.css
@@ -37,6 +43,9 @@ aether_targets_rel() {
 LIST
     for f in "$AETHER_COMMON_REPO"/system/systemd/*.service "$AETHER_COMMON_REPO"/system/systemd/*.timer; do
         [ -f "$f" ] && echo ".config/systemd/user/$(basename "$f")"
+    done
+    for f in "$AETHER_COMMON_REPO"/system/systemd/*.service.d/*.conf; do
+        [ -f "$f" ] && echo ".config/systemd/user/$(basename "$(dirname "$f")")/$(basename "$f")"
     done
     for f in "$AETHER_COMMON_REPO"/scripts/bin/*; do
         [ -f "$f" ] && echo ".local/bin/$(basename "$f")"

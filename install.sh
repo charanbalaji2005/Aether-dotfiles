@@ -10,6 +10,9 @@
 #   ./install.sh --rollback   undo the installation and put your old configs back
 #
 # Options:
+#   --interface classic|aether            classic: Waybar, Rofi, SwayNC, Wlogout, Hyprlock, swww
+#                       (JaKooLit-style); aether: the Quickshell shell. Default: your current
+#                       choice, else classic. Switch later with: aether-interface set …
 #   --mode minimal|recommended|complete   which package sets to install (default: recommended)
 #   --yes               don't ask before installing packages from enabled repositories
 #   --enable-copr       allow adding the COPR repositories listed in packages/fedora/repos.conf
@@ -18,6 +21,7 @@
 #   --skip-quickshell   don't install or build Quickshell
 #   --with-zshrc        replace an existing ~/.zshrc (it is moved aside, never deleted)
 #   --restart           ignore the saved progress of an interrupted install
+#   --no-fonts          don't offer to download JetBrainsMono Nerd Font
 #
 # What it never does: run as root, change SELinux/firewall/Secure Boot, touch
 # the bootloader or kernel, install GPU drivers without its own separate
@@ -45,8 +49,10 @@ INSTALL_QUICKSHELL=1
 WITH_ZSHRC=0
 RESTART=0
 DRY=0
+INTERFACE=""
+INSTALL_FONTS=1
 
-usage() { sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,29p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -57,6 +63,11 @@ while [ $# -gt 0 ]; do
             shift
             MODE="${1:-}" ;;
         --mode=*) MODE="${1#--mode=}" ;;
+        --interface)
+            shift
+            INTERFACE="${1:-}" ;;
+        --interface=*) INTERFACE="${1#--interface=}" ;;
+        --no-fonts) INSTALL_FONTS=0 ;;
         --yes|-y) ASSUME_YES=1 ;;
         --enable-copr) ENABLE_COPR=1 ;;
         --no-packages) INSTALL_PACKAGES=0 ;;
@@ -69,6 +80,13 @@ while [ $# -gt 0 ]; do
     shift
 done
 case "$MODE" in minimal|recommended|complete) ;; *) echo "--mode must be minimal, recommended or complete" >&2; exit 2 ;; esac
+if [ -z "$INTERFACE" ]; then
+    INTERFACE="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/aether-shell/interface" 2>/dev/null || true)"
+    case "$INTERFACE" in classic|aether) ;; *) INTERFACE=classic ;; esac
+fi
+case "$INTERFACE" in classic|aether) ;; *) echo "--interface must be classic or aether" >&2; exit 2 ;; esac
+# The classic interface doesn't use Quickshell: don't build it for nothing.
+[ "$INTERFACE" = classic ] && INSTALL_QUICKSHELL=0
 [ "$ACTION" = "dry-run" ] && DRY=1
 
 if [ "$(id -u)" -eq 0 ]; then
@@ -96,7 +114,9 @@ BLOCKERS=0
 try_step() {
     local what="$1"; shift
     local rc=0
-    "$@" || rc=$?
+    # 9>&-: daemons a step starts (waybar, swaync…) must not inherit the
+    # install lock, or they hold it and block every later install.
+    "$@" 9>&- || rc=$?
     if [ "$rc" -ne 0 ]; then
         warn "$what failed (exit $rc) — the install continues; see the log above"
     fi
@@ -141,11 +161,16 @@ start_log() {
     LOG_FILE="$LOG_DIR/install-$(date +%Y%m%d-%H%M%S).log"
     # Keep the ten most recent logs.
     find "$LOG_DIR" -maxdepth 1 -name 'install-*.log' -printf '%T@ %p\n' 2>/dev/null | sort -rn | awk 'NR>10 {print $2}' | xargs -r rm -f
-    exec > >(tee -a "$LOG_FILE") 2>&1
-    echo "AetherOS installer — action=$ACTION mode=$MODE — $(date)"
+    # 9>&-: the logger must not hold the install lock (see acquire_lock).
+    exec > >(tee -a "$LOG_FILE" 9>&-) 2>&1
+    echo "AetherOS installer — action=$ACTION mode=$MODE interface=$INTERFACE — $(date)"
     echo "Repository: $REPO_DIR ($(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo 'not a git checkout'))"
 }
 
+# Only the installer itself holds the lock: its actions run with fd 9 closed
+# (bash keeps a close-on-exec copy, so the lock stays held), so nothing they
+# start (Waybar, the Quickshell island, the dock…) inherits it and blocks
+# every later install, update or rollback until it exits.
 acquire_lock() {
     mkdir -p "$STATE_DIR"
     exec 9>"$STATE_DIR/install.lock"
@@ -180,29 +205,47 @@ package_lists() {
         recommended) echo "$REPO_DIR/packages/fedora/recommended.txt" ;;
         complete) echo "$REPO_DIR/packages/fedora/recommended.txt"; echo "$REPO_DIR/packages/fedora/optional.txt"; echo "$REPO_DIR/packages/fedora/advanced.txt" ;;
     esac
+    if [ "$INTERFACE" = classic ]; then
+        echo "$REPO_DIR/packages/fedora/classic.txt"
+        [ "$MODE" = complete ] && echo "$REPO_DIR/packages/fedora/classic-extra.txt"
+    fi
 }
 
 # Sort the wanted packages into installed / available / unavailable by asking
 # rpm and the *enabled* repositories — no package name is assumed to exist.
 PKG_INSTALLED=(); PKG_AVAILABLE=(); PKG_MISSING=()
 REPOQUERY_FAILED=0
+# A list line "a|b" is a group of alternatives: satisfied if any is
+# installed, otherwise the first one the repositories offer is installed.
 classify_packages() {
-    local wanted=() list pkg avail
+    local groups=() list pkg avail line
     while IFS= read -r list; do
         [ -f "$list" ] || continue
-        while IFS= read -r pkg; do wanted+=("$pkg"); done < <(read_pkgs "$list")
+        while IFS= read -r line; do
+            # The same package can be in two lists; ask about it once.
+            [[ " ${groups[*]} " == *" $line "* ]] || groups+=("$line")
+        done < <(read_pkgs "$list")
     done < <(package_lists)
     PKG_INSTALLED=(); PKG_AVAILABLE=(); PKG_MISSING=()
-    local pending=()
-    for pkg in "${wanted[@]}"; do
-        if rpm -q --quiet "$pkg" 2>/dev/null || rpm -q --quiet --whatprovides "$pkg" 2>/dev/null; then
-            PKG_INSTALLED+=("$pkg")
+    local pending=() unresolved=() alts alt found
+    for line in "${groups[@]}"; do
+        IFS='|' read -r -a alts <<< "$line"
+        found=""
+        for alt in "${alts[@]}"; do
+            if rpm -q --quiet "$alt" 2>/dev/null || rpm -q --quiet --whatprovides "$alt" 2>/dev/null; then found="$alt"; break; fi
+        done
+        if [ -n "$found" ]; then
+            PKG_INSTALLED+=("$found")
         else
-            pending+=("$pkg")
+            unresolved+=("$line")
+            pending+=("${alts[@]}")
         fi
     done
-    [ ${#pending[@]} -eq 0 ] && return 0
-    if [ -z "$DNF" ]; then PKG_MISSING=("${pending[@]}"); return 0; fi
+    [ ${#unresolved[@]} -eq 0 ] && return 0
+    if [ -z "$DNF" ]; then
+        for line in "${unresolved[@]}"; do PKG_MISSING+=("${line%%|*}"); done
+        return 0
+    fi
     # One repoquery for everything. --qf needs an explicit newline on dnf5.
     local rq_rc=0
     avail="$("$DNF" -q repoquery --available --qf '%{name}\n' "${pending[@]}" 2>/dev/null)" || rq_rc=$?
@@ -212,8 +255,13 @@ classify_packages() {
         REPOQUERY_FAILED=1
     fi
     avail="$(printf '%s\n' "$avail" | sed 's/\\n$//' | sort -u)"
-    for pkg in "${pending[@]}"; do
-        if grep -qx "$pkg" <<< "$avail"; then PKG_AVAILABLE+=("$pkg"); else PKG_MISSING+=("$pkg"); fi
+    for line in "${unresolved[@]}"; do
+        IFS='|' read -r -a alts <<< "$line"
+        found=""
+        for alt in "${alts[@]}"; do
+            if grep -qx "$alt" <<< "$avail"; then found="$alt"; break; fi
+        done
+        if [ -n "$found" ]; then PKG_AVAILABLE+=("$found"); else PKG_MISSING+=("${alts[0]}"); fi
     done
 }
 
@@ -284,11 +332,13 @@ preflight() {
         warn "No display manager detected: start the session with 'Hyprland' from a TTY."
     fi
 
-    local running=""
-    for proc in waybar mako dunst swaync; do
+    ok "Interface: $INTERFACE$([ "$INTERFACE" = classic ] && echo ' (Waybar, Rofi, SwayNC, Wlogout, Hyprlock, swww)' || echo ' (Quickshell shell)')"
+    local running="" procs=(mako dunst)
+    [ "$INTERFACE" = aether ] && procs+=(waybar swaync)
+    for proc in "${procs[@]}"; do
         pgrep -x "$proc" >/dev/null 2>&1 && running="$running $proc"
     done
-    [ -n "$running" ] && warn "Running now:$running — AetherOS provides its own bar and notifications; these would overlap in a Hyprland session."
+    [ -n "$running" ] && warn "Running now:$running — AetherOS starts its own bar/notifications; these would overlap in a Hyprland session."
 
     step "Existing configuration"
     local found=0 t
@@ -429,13 +479,32 @@ do_links() {
             args+=(--keep-zshrc)
         fi
     fi
+    args+=(--interface "$INTERFACE")
     bash "$REPO_DIR/scripts/setup-symlinks.sh" "${args[@]}" | sed 's/^/  /'
+}
+
+do_fonts() {
+    [ "$INSTALL_FONTS" -eq 1 ] || return 0
+    step "Fonts"
+    if command -v fc-list >/dev/null 2>&1 && fc-list 2>/dev/null | grep -i "Nerd Font" >/dev/null; then
+        ok "A Nerd Font is installed"
+        return 0
+    fi
+    if [ "$DRY" -eq 1 ]; then bash "$REPO_DIR/scripts/install-fonts.sh" --dry-run | sed 's/^/  /'; return 0; fi
+    echo "  The bar and menu icons need a Nerd Font, which Fedora doesn't package."
+    echo "  JetBrainsMono Nerd Font $(sed -n 's/^VERSION="\(.*\)"/\1/p' "$REPO_DIR/scripts/install-fonts.sh") can be downloaded from GitHub (checksum-verified) to ~/.local/share/fonts."
+    if confirm "Download and install it?"; then
+        bash "$REPO_DIR/scripts/install-fonts.sh" | sed 's/^/  /' || warn "font installation failed — icons will show as boxes (retry: scripts/install-fonts.sh)"
+    else
+        warn "No Nerd Font: icons will show as boxes. Install later with scripts/install-fonts.sh"
+    fi
 }
 
 do_configure() {
     step "Per-machine configuration"
     if ! command -v python3 >/dev/null 2>&1; then warn "python3 missing: hardware detection and settings migration skipped."; return 0; fi
     if [ "$DRY" -eq 1 ]; then
+        info "would run: aether-interface set $INTERFACE (select the interface, its services and colours)"
         info "would run: aether config migrate         (upgrade settings from an older AetherOS)"
         info "would run: aether hyprland compat        (rules/gestures for the installed Hyprland)"
         info "would run: aether graphics configure     (GPU environment for this machine)"
@@ -444,6 +513,7 @@ do_configure() {
         info "would run: scripts/build-shaders.sh      (compile shaders for the installed Qt)"
         return 0
     fi
+    try_step "aether-interface set $INTERFACE" bash "$REPO_DIR/scripts/bin/aether-interface" set "$INTERFACE" --no-reload
     aether config migrate || warn "settings migration reported a problem (aether config validate)"
     try_step "aether hyprland compat" aether hyprland compat
     try_step "aether graphics configure" aether graphics configure
@@ -464,7 +534,12 @@ do_services() {
     local units=() u
     for u in "$REPO_DIR"/system/systemd/*.service; do
         # Units without [Install] (the safe-mode fallback) are started on demand.
-        grep -q '^\[Install\]' "$u" && units+=("$(basename "$u")")
+        grep -q '^\[Install\]' "$u" || continue
+        # The classic interface runs its own idle daemon and no Quickshell.
+        if [ "$INTERFACE" = classic ]; then
+            case "$(basename "$u")" in aether-shell.service|aether-idle.service) continue ;; esac
+        fi
+        units+=("$(basename "$u")")
     done
     if [ "$DRY" -eq 1 ]; then info "would enable: ${units[*]}"; return 0; fi
     if systemctl --user daemon-reload 2>/dev/null; then
@@ -480,8 +555,12 @@ do_services() {
 
 do_validate() {
     step "Validation"
-    if [ "$DRY" -eq 1 ]; then info "would run: scripts/doctor.sh, aether hyprland, aether config validate"; return 0; fi
-    try_step "scripts/doctor.sh" bash "$REPO_DIR/scripts/doctor.sh"
+    if [ "$DRY" -eq 1 ]; then info "would run: scripts/doctor.sh or aether-interface doctor, aether hyprland, aether config validate"; return 0; fi
+    if [ "$INTERFACE" = classic ]; then
+        try_step "aether-interface doctor" bash "$REPO_DIR/scripts/bin/aether-interface" doctor
+    else
+        try_step "scripts/doctor.sh" bash "$REPO_DIR/scripts/doctor.sh"
+    fi
     if command -v python3 >/dev/null 2>&1; then
         try_step "Hyprland config validation (aether hyprland)" aether hyprland
         try_step "settings validation (aether config validate)" aether config validate
@@ -520,6 +599,7 @@ do_install() {
     run_step quickshell install_quickshell
     run_step backup do_backup
     run_step links do_links
+    run_step fonts do_fonts
     run_step configure do_configure
     run_step services do_services
     do_validate
@@ -534,7 +614,12 @@ do_install() {
             echo "${B}AetherOS is installed.${N}  Log: $LOG_FILE"
         fi
         echo "  Log out, choose the Hyprland session at your display manager, and log in."
-        echo "  If the shell misbehaves:        aether recover"
+        if [ "$INTERFACE" = classic ]; then
+            echo "  Keys: Super+D apps · Super+A settings · Super+H all keybindings · Super+Esc power"
+            echo "  If something is missing:        aether-interface doctor"
+        else
+            echo "  If the shell misbehaves:        aether recover"
+        fi
         echo "  If Hyprland won't start (TTY):  Hyprland -c ~/.config/hypr/recovery.conf"
         echo "  To undo everything:             ./install.sh --rollback"
     fi
@@ -558,7 +643,11 @@ do_update() {
     do_services
     do_validate
     echo
-    echo "${B}Update complete.${N} Apply it with: aether reload"
+    if [ "$INTERFACE" = classic ]; then
+        echo "${B}Update complete.${N} Apply it with: aether-classic-start --reload"
+    else
+        echo "${B}Update complete.${N} Apply it with: aether reload"
+    fi
     echo "  If something regressed: aether snapshot restore latest   (settings)   or   git -C $REPO_DIR reset --hard ORIG_HEAD   (files)"
 }
 
@@ -600,8 +689,8 @@ case "${ACTION:-interactive}" in
         echo "${G}Ready to install${N} ($WARNINGS warning(s)). Preview with ./install.sh --dry-run"
         ;;
     dry-run) do_install ;;
-    install|interactive) acquire_lock; start_log; do_install ;;
-    update) acquire_lock; start_log; do_update ;;
-    uninstall) acquire_lock; start_log; do_uninstall ;;
-    rollback) acquire_lock; start_log; do_rollback ;;
+    install|interactive) acquire_lock; start_log; do_install 9>&- ;;
+    update) acquire_lock; start_log; do_update 9>&- ;;
+    uninstall) acquire_lock; start_log; do_uninstall 9>&- ;;
+    rollback) acquire_lock; start_log; do_rollback 9>&- ;;
 esac

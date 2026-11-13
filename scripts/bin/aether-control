@@ -1,0 +1,17 @@
+#!/usr/bin/bash
+# aether-control — open or close the Control Centre panel (Super+A, the bar's 󰒓 button).
+#   aether-control            toggle
+#   aether-control layout     print the controls in the panel, in order
+# Customise it in Settings → Control Centre (or its "Edit Controls" button).
+set -euo pipefail
+LIB="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../lib" && pwd)"
+case "${1:-toggle}" in
+    layout) exec python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); from aether import controls as c; print("\n".join(c.load_layout()))' "$LIB" ;;
+    -h|--help) sed -n '2,5p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+esac
+if pkill -f 'aether\.control_center' 2>/dev/null; then exit 0; fi
+if ! python3 -c 'import gi; gi.require_version("Gtk", "3.0"); from gi.repository import Gtk' >/dev/null 2>&1; then
+    echo "aether-control: GTK 3 for Python is missing (sudo dnf install python3-gobject gtk3 gtk-layer-shell) — opening the menu" >&2
+    exec "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/aether-menu" settings
+fi
+exec python3 -I -c 'import sys; sys.path.insert(0, sys.argv.pop(1)); from aether.control_center import main; sys.exit(main(sys.argv[1:]))' "$LIB" "$@"

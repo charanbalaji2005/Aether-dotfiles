@@ -1,0 +1,487 @@
+#!/usr/bin/bash
+# aether-menu — the Rofi menus of the AetherOS classic interface.
+#
+#   aether-menu apps | launchpad | run | window | files     launcher modes
+#   aether-menu clipboard                       history (Alt+Del deletes, Alt+Shift+Del wipes)
+#   aether-menu emoji                           pick and copy (types it too if wtype is installed)
+#   aether-menu calc                            calculator (qalc, or a built-in safe evaluator)
+#   aether-menu web                             web search (state key search_url)
+#   aether-menu keys                            searchable keybinding reference
+#   aether-menu wifi | bluetooth | audio        network, Bluetooth and sound devices
+#   aether-menu theme | waybar | screenshot     appearance and capture menus
+#   aether-menu power                           power menu (used when wlogout is missing)
+#   aether-menu settings                        the quick-settings hub (Super+A)
+
+set -euo pipefail
+# shellcheck source=SCRIPTDIR/../lib/classic.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/classic.sh"
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+HYPR="${XDG_CONFIG_HOME:-$HOME/.config}/hypr"
+TERMINAL_CMD="${AETHER_TERMINAL:-aether-terminal}"
+
+usage() { sed -n '2,14p' "$SELF" | sed 's/^# \{0,1\}//'; }
+
+# Toggle: a second press of the same key closes an open Rofi.
+close_if_open() { if pgrep -x rofi >/dev/null 2>&1; then pkill -x rofi; exit 0; fi; }
+
+copy() { need wl-copy wl-clipboard; printf '%s' "$1" | wl-copy; }
+
+# tmenu: like amenu, but rows are "<shown>\t<value>"; prints only <value>.
+# (Hidden columns avoid slicing multi-byte icon glyphs with cut/sed.)
+tmenu() {
+    local sel
+    sel="$(amenu "$@" -display-columns 1 -display-column-separator $'\t')" || return 1
+    printf '%s\n' "${sel#*$'\t'}"
+}
+
+confirm() {  # confirm "<question>"
+    [ "$(printf 'No\nYes\n' | amenu "$1")" = "Yes" ]
+}
+
+# ── launcher modes ──────────────────────────────────────────────────────
+launcher() {
+    close_if_open
+    need rofi rofi-wayland
+    local theme; theme="$(cstate_get rofi_launcher aether)"
+    [ -f "$ROFI_THEMES/$theme.rasi" ] || theme=aether
+    rofi -show "$1" -theme "$ROFI_THEMES/$theme.rasi"
+}
+
+# ── clipboard ───────────────────────────────────────────────────────────
+menu_clipboard() {
+    close_if_open
+    need cliphist cliphist
+    local sel rc
+    while true; do
+        rc=0
+        sel="$(cliphist list | amenu "Clipboard" -kb-custom-1 "Alt+Delete" -kb-custom-2 "Alt+Shift+Delete" \
+            -mesg "Enter: copy  ·  Alt+Del: delete  ·  Alt+Shift+Del: clear all")" || rc=$?
+        case "$rc" in
+            0) [ -n "$sel" ] && printf '%s\n' "$sel" | cliphist decode | wl-copy; return 0 ;;
+            10) [ -n "$sel" ] && printf '%s\n' "$sel" | cliphist delete ;;
+            11) confirm "Clear the whole clipboard history?" && cliphist wipe && notify "Clipboard" "History cleared" edit-clear -e; return 0 ;;
+            *) return 0 ;;
+        esac
+    done
+}
+
+# ── emoji ───────────────────────────────────────────────────────────────
+emoji_list() {
+    local cache="${XDG_CACHE_HOME:-$HOME/.cache}/aether/emoji.txt"
+    if [ ! -s "$cache" ]; then
+        mkdir -p "$(dirname "$cache")"
+        python3 - > "$cache.tmp" <<'PY'
+import unicodedata
+ranges = [(0x1F300, 0x1F5FF), (0x1F600, 0x1F64F), (0x1F680, 0x1F6FF), (0x1F900, 0x1F9FF),
+          (0x1FA70, 0x1FAFF), (0x2600, 0x26FF), (0x2700, 0x27BF), (0x1F1E6, 0x1F1FF)]
+for lo, hi in ranges:
+    for cp in range(lo, hi + 1):
+        name = unicodedata.name(chr(cp), "")
+        if name:
+            print("%s  %s" % (chr(cp), name.lower()))
+PY
+        mv "$cache.tmp" "$cache"
+    fi
+    cat "$cache"
+}
+
+menu_emoji() {
+    close_if_open
+    local sel ch
+    sel="$(emoji_list | amenu "Emoji")" || return 0
+    ch="${sel%%  *}"
+    copy "$ch"
+    if have wtype; then sleep 0.15; wtype "$ch" || true; fi
+}
+
+# ── calculator ──────────────────────────────────────────────────────────
+calc_eval() {
+    if have qalc; then
+        qalc -t -- "$1" 2>/dev/null | tail -n 1
+    else
+        python3 -I -c '
+import ast, math, operator as op, sys
+OPS = {ast.Add: op.add, ast.Sub: op.sub, ast.Mult: op.mul, ast.Div: op.truediv, ast.Pow: op.pow,
+       ast.Mod: op.mod, ast.FloorDiv: op.floordiv, ast.USub: op.neg, ast.UAdd: op.pos}
+FUN = {k: getattr(math, k) for k in ("sqrt", "sin", "cos", "tan", "log", "log10", "log2", "exp", "floor", "ceil", "factorial", "radians", "degrees")}
+FUN["abs"] = abs; FUN["round"] = round
+CON = {"pi": math.pi, "e": math.e, "tau": math.tau}
+def ev(n):
+    if isinstance(n, ast.Expression): return ev(n.body)
+    if isinstance(n, ast.Constant) and isinstance(n.value, (int, float)): return n.value
+    if isinstance(n, ast.BinOp) and type(n.op) in OPS:
+        if isinstance(n.op, ast.Pow) and abs(ev(n.right)) > 1000: raise ValueError("exponent too large")
+        return OPS[type(n.op)](ev(n.left), ev(n.right))
+    if isinstance(n, ast.UnaryOp) and type(n.op) in OPS: return OPS[type(n.op)](ev(n.operand))
+    if isinstance(n, ast.Name) and n.id in CON: return CON[n.id]
+    if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in FUN and not n.keywords:
+        return FUN[n.func.id](*[ev(a) for a in n.args])
+    raise ValueError("unsupported expression")
+try:
+    r = ev(ast.parse(sys.argv[1].replace("^", "**").replace("×", "*").replace("÷", "/"), mode="eval"))
+    print(int(r) if isinstance(r, float) and r.is_integer() and abs(r) < 1e15 else r)
+except Exception as e:
+    print("error: %s" % e)
+' "$1"
+    fi
+}
+
+menu_calc() {
+    close_if_open
+    local expr="" result sel
+    while true; do
+        if [ -z "$expr" ]; then
+            expr="$(printf '' | amenu "Calc" -mesg "Type an expression, e.g. 2^10, sqrt(2), 15% of 80 (qalc)")" || return 0
+            [ -n "$expr" ] || return 0
+        fi
+        result="$(calc_eval "$expr")"
+        sel="$(printf '%s\n' "Copy  $result" | amenu "Calc" -mesg "$expr = $result  (Enter copies; type to calculate again)")" || return 0
+        if [ "$sel" = "Copy  $result" ]; then copy "$result"; notify "Copied" "$result" accessories-calculator -e; return 0; fi
+        expr="$sel"
+    done
+}
+
+# ── web search ──────────────────────────────────────────────────────────
+menu_web() {
+    close_if_open
+    local q url
+    q="$(printf '' | amenu "Search" -mesg "Search the web ($(cstate_get search_name DuckDuckGo))")" || return 0
+    [ -n "$q" ] || return 0
+    url="$(cstate_get search_url 'https://duckduckgo.com/?q=')"
+    q="$(python3 -I -c 'import sys, urllib.parse; print(urllib.parse.quote_plus(sys.argv[1]))' "$q")"
+    setsid -f xdg-open "${url}${q}" >/dev/null 2>&1
+}
+
+# ── keybinding reference ────────────────────────────────────────────────
+keys_list() {
+    local iface; iface="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/aether-shell/interface" 2>/dev/null || echo classic)"
+    python3 -I - "$HYPR/keybinds.conf" "$HYPR/interfaces/$iface.conf" <<'PY'
+import re, sys
+mod = "SUPER"
+rows = []
+for path in sys.argv[1:]:
+    try:
+        lines = open(path, encoding="utf-8").read().splitlines()
+    except OSError:
+        continue
+    for line in lines:
+        m = re.match(r"^\s*\$mod\s*=\s*(\S+)", line)
+        if m:
+            mod = m.group(1); continue
+        m = re.match(r"^\s*bind[a-z]*\s*=\s*([^,]*),\s*([^,]+),\s*([^#]*?)\s*(?:#:\s*(.*))?$", line)
+        if not m:
+            continue
+        mods = m.group(1).replace("$mod", mod).split()
+        key = m.group(2).strip()
+        key = {"Return": "Enter", "grave": "`", "comma": ",", "period": ".", "mouse:272": "LMB", "mouse:273": "RMB",
+               "mouse_down": "Wheel↓", "mouse_up": "Wheel↑", "Print": "PrtSc", "slash": "/", "space": "Space"}.get(key, key)
+        combo = " + ".join(mods + [key]) if mods else key
+        desc = m.group(4) or m.group(3).replace(",", " ").strip()
+        if desc:
+            rows.append("%-28s %s" % (combo, desc))
+seen = set()
+for r in rows:
+    if r not in seen:
+        seen.add(r); print(r)
+PY
+}
+
+menu_keys() {
+    close_if_open
+    { aether-bindings list 2>/dev/null || keys_list; } | sed '/^$/d' \
+        | amenu "Keys" -theme "$ROFI_THEMES/keys.rasi" -no-custom -mesg "Type to filter by key, action or category" >/dev/null || true
+}
+
+# ── Wi-Fi (NetworkManager) ──────────────────────────────────────────────
+menu_wifi() {
+    close_if_open
+    need nmcli NetworkManager
+    local radio rows sel ssid sec known pw
+    radio="$(nmcli -t radio wifi 2>/dev/null || echo unknown)"
+    if [ "$radio" != "enabled" ]; then
+        sel="$(printf '󰖩  Turn Wi-Fi on\n' | amenu "Wi-Fi")" || return 0
+        nmcli radio wifi on && notify "Wi-Fi" "Turned on — scanning…" network-wireless -e
+        sleep 3; menu_wifi; return
+    fi
+    # SSID is the last field so colons inside it survive the split.
+    # Row value: <in-use *|-> <secured 1|0> <ssid>
+    rows="$(nmcli --escape no -t -f IN-USE,SIGNAL,SECURITY,SSID dev wifi list --rescan auto 2>/dev/null \
+        | awk -F: '$4 != "" { ssid = $0; sub(/^[^:]*:[^:]*:[^:]*:/, "", ssid);
+                              if (seen[ssid]++) next;
+                              sec = ($3 == "" || $3 == "--") ? 0 : 1;
+                              use = ($1 == "*") ? "*" : "-";
+                              printf "%s %s %3s%%  %s\t%s %d %s\n", (use == "*" ? "󰄬" : " "), (sec ? "󰌾" : " "), $2, ssid, use, sec, ssid }')"
+    sel="$(printf '%s\n%s\n%s\n' $'󰑐  Rescan\t@rescan' $'󰖪  Turn Wi-Fi off\t@off' "$rows" | tmenu "Wi-Fi" -mesg "󰄬 connected  ·  󰌾 secured")" || return 0
+    case "$sel" in
+        @rescan) nmcli dev wifi rescan >/dev/null 2>&1 || true; sleep 2; menu_wifi; return ;;
+        @off) nmcli radio wifi off; notify "Wi-Fi" "Turned off" network-wireless-offline -e; return ;;
+        "") return 0 ;;
+    esac
+    local use
+    read -r use sec ssid <<< "$sel"
+    if [ "$use" = "*" ]; then
+        confirm "Disconnect from $ssid?" && nmcli con down id "$ssid" >/dev/null && notify "Wi-Fi" "Disconnected from $ssid" network-wireless-offline -e
+        return 0
+    fi
+    known="$(nmcli -g NAME con show | grep -Fx -- "$ssid" || true)"
+    if [ -n "$known" ]; then
+        if nmcli con up id "$ssid" >/dev/null 2>&1; then notify "Wi-Fi" "Connected to $ssid" network-wireless -e; return 0; fi
+    fi
+    if [ "$sec" = 1 ]; then
+        pw="$(printf '' | amenu "Password" -password -mesg "Password for $ssid")" || return 0
+        if nmcli dev wifi connect "$ssid" password "$pw" >/dev/null 2>&1; then
+            notify "Wi-Fi" "Connected to $ssid" network-wireless -e
+        else
+            notify "Wi-Fi" "Could not connect to $ssid (wrong password?)" network-wireless-offline -u critical
+        fi
+    else
+        if nmcli dev wifi connect "$ssid" >/dev/null 2>&1; then notify "Wi-Fi" "Connected to $ssid" network-wireless -e
+        else notify "Wi-Fi" "Could not connect to $ssid" network-wireless-offline -u critical; fi
+    fi
+}
+
+# ── Bluetooth (BlueZ) ───────────────────────────────────────────────────
+bt_powered() { bluetoothctl show 2>/dev/null | grep -q "Powered: yes"; }
+
+menu_bluetooth() {
+    close_if_open
+    need bluetoothctl bluez
+    if ! bluetoothctl show >/dev/null 2>&1 || ! bluetoothctl list | grep -q .; then
+        notify "Bluetooth" "No Bluetooth adapter found" bluetooth-disabled -e; return 0
+    fi
+    local sel rows mac name
+    if ! bt_powered; then
+        sel="$(printf '󰂯  Turn Bluetooth on\n' | amenu "Bluetooth")" || return 0
+        rfkill unblock bluetooth 2>/dev/null || true
+        bluetoothctl power on >/dev/null && notify "Bluetooth" "Turned on" bluetooth-active -e
+        menu_bluetooth; return
+    fi
+    # Row value: <state c|p|n> <mac> <name>
+    rows="$(bluetoothctl devices 2>/dev/null | while read -r _ mac name; do
+        info="$(bluetoothctl info "$mac" 2>/dev/null)"
+        if grep -q "Connected: yes" <<< "$info"; then printf '󰂱  %s\tc %s %s\n' "$name" "$mac" "$name"
+        elif grep -q "Paired: yes" <<< "$info"; then printf '󰂯  %s\tp %s %s\n' "$name" "$mac" "$name"
+        else printf '󰂲  %s\tn %s %s\n' "$name" "$mac" "$name"; fi
+    done)"
+    sel="$(printf '%s\n%s\n%s\n%s\n' $'󰑐  Scan for devices (8 s)\t@scan' $'󰂲  Turn Bluetooth off\t@off' $'󰂯  Blueman manager\t@blueman' "$rows" \
+        | tmenu "Bluetooth" -mesg "󰂱 connected  ·  󰂯 paired  ·  󰂲 new")" || return 0
+    case "$sel" in
+        @scan)
+            notify "Bluetooth" "Scanning…" bluetooth-active -e
+            bluetoothctl --timeout 8 scan on >/dev/null 2>&1 || true
+            menu_bluetooth; return ;;
+        @off) bluetoothctl power off >/dev/null; notify "Bluetooth" "Turned off" bluetooth-disabled -e; return ;;
+        @blueman) need blueman-manager blueman; setsid -f blueman-manager >/dev/null 2>&1; return ;;
+        "") return 0 ;;
+    esac
+    local state
+    read -r state mac name <<< "$sel"
+    case "$state" in
+        c) bluetoothctl disconnect "$mac" >/dev/null && notify "Bluetooth" "Disconnected $name" bluetooth-active -e ;;
+        p) if bluetoothctl connect "$mac" >/dev/null 2>&1; then notify "Bluetooth" "Connected $name" bluetooth-active -e
+           else notify "Bluetooth" "Could not connect $name" bluetooth-disabled -u critical; fi ;;
+        *)
+            notify "Bluetooth" "Pairing with $name…" bluetooth-active -e
+            if bluetoothctl --timeout 20 pair "$mac" >/dev/null 2>&1 && bluetoothctl trust "$mac" >/dev/null 2>&1 \
+                && bluetoothctl connect "$mac" >/dev/null 2>&1; then
+                notify "Bluetooth" "Paired and connected $name" bluetooth-active -e
+            else
+                notify "Bluetooth" "Pairing with $name failed — devices that show a PIN need Blueman" bluetooth-disabled -u critical
+            fi ;;
+    esac
+}
+
+# ── audio devices (PipeWire via pactl) ──────────────────────────────────
+menu_audio() {
+    close_if_open
+    need pactl pulseaudio-utils
+    local kind sel name
+    kind="$(printf '󰓃  Output device\n󰍬  Input device\n󰕾  Mixer (pavucontrol)\n' | amenu "Audio")" || return 0
+    case "$kind" in
+        *Mixer*) need pavucontrol pavucontrol; setsid -f pavucontrol >/dev/null 2>&1; return 0 ;;
+        *Output*) kind=sinks ;;
+        *Input*) kind=sources ;;
+        *) return 0 ;;
+    esac
+    sel="$(pactl -f json list "$kind" 2>/dev/null | python3 -I -c '
+import json, sys
+kind, default = sys.argv[1], sys.argv[2]
+for d in json.load(sys.stdin):
+    if kind == "sources" and d.get("monitor_of_sink") not in (None, "", "n/a"):
+        continue
+    mark = "󰄬" if d["name"] == default else " "
+    desc = d.get("description") or d["name"]
+    print("%s  %s\t%s %s" % (mark, desc, d["name"], desc))
+' "$kind" "$(pactl "get-default-${kind%s}" 2>/dev/null)" | tmenu "Device")" || return 0
+    local desc
+    read -r name desc <<< "$sel"
+    [ -n "$name" ] || return 0
+    pactl "set-default-${kind%s}" "$name" && notify "Audio" "Now using: $desc" audio-card -e
+}
+
+# ── theme / waybar / screenshot ─────────────────────────────────────────
+menu_theme() {
+    close_if_open
+    local mode src sel p
+    mode="$(cstate_get mode dark)"; src="$(cstate_get source image)"
+    sel="$( {
+        printf '%s\n' "󰔉  Looks…" "󰌾  Lock screen design…" "󰔎  Toggle dark / light (now: $mode)" "  Colours from wallpaper — wallust" "  Colours from wallpaper — built-in" "󰸌  Wallpaper…"
+        aether-colors presets | awk '{ printf "  Preset: %s (%s)\n", $1, $2 }'
+    } | amenu "Theme" -mesg "Palette source: $src")" || return 0
+    case "$sel" in
+        *Looks…) aether-look menu ;;
+        *Lock\ screen*) aether-lock menu ;;
+        *Toggle*) aether-colors mode toggle ;;
+        *wallust) have wallust || { notify "wallust is not installed" "Using the built-in extractor. Install: cargo install wallust" dialog-information; }
+                  aether-colors source wallust ;;
+        *built-in) aether-colors source image ;;
+        *Wallpaper*) aether-wall select ;;
+        *Preset:*) p="${sel#*Preset: }"; aether-colors source preset "${p%% *}" ;;
+    esac >/dev/null
+}
+
+menu_waybar() {
+    close_if_open
+    local sel
+    sel="$( {
+        aether-waybar layouts | sed 's/^/󰕮  Layout: /'
+        aether-waybar styles | sed 's/^/󰏘  Style: /'
+        printf '%s\n' "󰑓  Restart Waybar" "󰘷  Show / hide Waybar"
+    } | amenu "Waybar" -mesg "Layout: $(cstate_get waybar_layout default)  ·  Style: $(cstate_get waybar_style pills)")" || return 0
+    case "$sel" in
+        *Layout:*) aether-waybar layout "${sel#*Layout: }" ;;
+        *Style:*) aether-waybar style "${sel#*Style: }" ;;
+        *Restart*) aether-waybar restart ;;
+        *hide*) aether-waybar toggle ;;
+    esac
+}
+
+menu_screenshot() {
+    close_if_open
+    local sel
+    sel="$(printf '%s\n' "󰹑  Whole screen" "󰆞  Area" "󰖯  Active window" "󰄀  Area → annotate (swappy)" "󰔛  Whole screen in 5 s" "󰻃  Record screen (start/stop)" "󰻃  Record area (start/stop)" \
+        | amenu "Capture")" || return 0
+    sleep 0.3  # let Rofi's surface disappear before capturing
+    case "$sel" in
+        *Whole\ screen\ in*) aether-shot screen --delay 5 ;;
+        *Whole*) aether-shot screen ;;
+        *annotate*) aether-shot area --edit ;;
+        *Area) aether-shot area ;;
+        *window) aether-shot window ;;
+        *Record\ screen*) aether-record toggle full ;;
+        *Record\ area*) aether-record toggle region ;;
+    esac
+}
+
+# ── power (fallback when wlogout is missing) ────────────────────────────
+menu_power() {
+    close_if_open
+    local sel
+    sel="$(printf '%s\n' $'󰌾  Lock\tlock' $'󰍃  Log out\tlogout' $'󰤄  Suspend\tsuspend' $'󰋊  Hibernate\thibernate' \
+        $'󰜉  Reboot\treboot' $'󰐥  Shut down\tshutdown' | tmenu "Power")" || return 0
+    aether-powermenu run "$sel"
+}
+
+# ── settings hub ────────────────────────────────────────────────────────
+run_term() { setsid -f "$TERMINAL_CMD" -e "$@" >/dev/null 2>&1; }
+open_app() { need "$1" "$2"; setsid -f "$1" >/dev/null 2>&1; }
+
+menu_settings() {
+    close_if_open
+    local sel
+    sel="$(printf '%s\n' \
+        "󰖩  Wi-Fi" "󰂯  Bluetooth" "󰓃  Audio devices" "󰍹  Displays (nwg-displays)" \
+        "󰸌  Wallpaper" "󰔉  Look (bar + launcher + colours)" "󰏘  Theme & colours" "󰕮  Waybar layout & style" \
+        "󰌾  Lock screen design" "󰓅  Visual profile (effects vs. speed)" "󰒓  Open the Settings window" \
+        "󰛨  Night light: $(aether-toggle status nightlight)" "󰾆  Power profile…" "󰊴  Game mode: $(aether-toggle status gamemode)" \
+        "󰂛  Do not disturb: $(aether-toggle status dnd)" "󰅶  Keep awake: $(aether-toggle status idle)" "󰀝  Airplane mode: $(aether-toggle status airplane)" \
+        "󰉼  GTK appearance (nwg-look)" "󰉼  Qt appearance (qt6ct)" "󰉼  Kvantum" \
+        "󰌌  Keybindings" "󰌌  Check keybindings for conflicts" "󰄨  System monitor (btop)" "  Edit Hyprland config" \
+        "󰑓  Reload desktop" "󰒓  Health check (aether-interface doctor)" "󰍹  Switch interface…" \
+        | amenu "Settings" -theme "$ROFI_THEMES/settings.rasi")" || return 0
+    case "$sel" in
+        *Wi-Fi) menu_wifi ;;
+        *Bluetooth) menu_bluetooth ;;
+        *Audio\ devices) menu_audio ;;
+        *Displays*) open_app nwg-displays nwg-displays ;;
+        *Wallpaper) aether-wall select ;;
+        *Look*) aether-look menu ;;
+        *Lock\ screen*) aether-lock menu ;;
+        *Visual\ profile*) menu_visual ;;
+        *Settings\ window) setsid -f aether-settings >/dev/null 2>&1 ;;
+        *Theme*) menu_theme ;;
+        *Waybar*) menu_waybar ;;
+        *Night\ light*) aether-toggle nightlight ;;
+        *Power\ profile*) menu_profile ;;
+        *Game\ mode*) aether-toggle gamemode ;;
+        *Do\ not\ disturb*) aether-toggle dnd ;;
+        *Keep\ awake*) aether-toggle idle ;;
+        *Airplane*) aether-toggle airplane ;;
+        *nwg-look*) open_app nwg-look nwg-look ;;
+        *qt6ct*) open_app qt6ct qt6ct ;;
+        *Kvantum) open_app kvantummanager kvantum ;;
+        *Keybindings) menu_keys ;;
+        *conflicts) run_term bash -c 'aether-bindings check; echo; read -r -p "Press Enter to close…" _' ;;
+        *btop*) need btop btop; run_term btop ;;
+        *Hyprland\ config) run_term "${EDITOR:-nano}" "$HYPR/hyprland.conf" ;;
+        *Reload*) aether-classic-start --reload ;;
+        *Health*) run_term bash -c 'aether-interface doctor; echo; read -r -p "Press Enter to close…" _' ;;
+        *interface*)
+            local to; to="$(printf 'classic  (Waybar, Rofi, SwayNC)\naether   (Quickshell shell)\n' | amenu "Interface")" || return 0
+            to="${to%% *}"
+            confirm "Switch to the $to interface now?" && aether-interface set "$to" ;;
+    esac
+}
+
+menu_visual() {
+    local sel
+    sel="$(printf '%s\n' $'󰓅  Quality — strong blur, shadows, full animations\tquality' \
+        $'󰾅  Balanced — the default\tbalanced' $'󰊴  Low latency — no blur or shadows, for games\tlow-latency' \
+        $'󰾆  Battery — no effects, opaque windows\tbattery' | tmenu "Visual profile" -mesg "Hyprland effects; independent of the look")" || return 0
+    if aether performance hyprland "$sel" >/dev/null 2>&1; then notify "Visual profile" "$sel" preferences-system-performance -e -u low
+    else notify "Visual profile" "Could not apply $sel (run: aether performance hyprland $sel)" dialog-warning; fi
+}
+
+menu_profile() {
+    need powerprofilesctl power-profiles-daemon
+    local cur sel
+    cur="$(powerprofilesctl get 2>/dev/null || echo unknown)"
+    sel="$(powerprofilesctl list 2>/dev/null | sed -nE 's/^[* ] *([a-z-]+):$/\1/p' | amenu "Power profile" -mesg "Current: $cur")" || return 0
+    powerprofilesctl set "$sel" && notify "Power profile" "$sel" power-profile-balanced -e
+}
+
+case "${1:-}" in
+    apps) launcher drun ;;
+    launchpad)
+        # Apps and open windows ("pages"), Tab switches between them.
+        close_if_open; need rofi rofi-wayland
+        err="$(rofi -show drun -modi "drun,window" -display-drun "Apps" -display-window "Open windows" \
+            -theme "$ROFI_THEMES/launchpad.rasi" 2>&1 >/dev/null)" || {
+            rc=$?
+            # 1 = closed with Escape, 143 = closed by a second key press
+            # (close_if_open sends SIGTERM); anything else is a real error.
+            if [ "$rc" -ne 1 ] && [ "$rc" -ne 143 ]; then notify "Launchpad could not open" "${err:-rofi exited with $rc}" dialog-error -u critical; fi
+        } ;;
+    run) launcher run ;;
+    window) launcher window ;;
+    files) launcher filebrowser ;;
+    clipboard) menu_clipboard ;;
+    emoji) menu_emoji ;;
+    calc) menu_calc ;;
+    web) menu_web ;;
+    keys) menu_keys ;;
+    wifi) menu_wifi ;;
+    bluetooth) menu_bluetooth ;;
+    audio) menu_audio ;;
+    theme) menu_theme ;;
+    waybar) menu_waybar ;;
+    screenshot) menu_screenshot ;;
+    power) menu_power ;;
+    profile) menu_profile ;;
+    visual) menu_visual ;;
+    settings) menu_settings ;;
+    keys-list) keys_list ;;
+    -h|--help|help|"") usage ;;
+    *) usage >&2; exit 2 ;;
+esac

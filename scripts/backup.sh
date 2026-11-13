@@ -20,6 +20,8 @@ TARGETS+=(
     "$HOME/.config/aether-shell/terminal"
     "$HOME/.config/aether-shell/layouts.json"
     "$HOME/.config/aether-shell/profiles"
+    "$HOME/.config/aether-shell/interface"
+    "$HOME/.config/aether-shell/classic/state.conf"
 )
 
 mkdir -p "$BACKUP_DIR"

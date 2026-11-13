@@ -1,41 +1,131 @@
 #!/usr/bin/bash
-# aether-terminal — start the preferred terminal (Settings → Terminal).
+# aether-terminal — start the preferred terminal (Settings → Terminal) with your shell.
 #
-#   aether-terminal                 open a terminal
+#   aether-terminal                 open a terminal running your default shell
 #   aether-terminal -e cmd args…    run a command in it
+#   aether-terminal --shell NAME    open a terminal running NAME this once
+#   aether-terminal --pick-shell    choose a shell (or change the default) from a menu
+#   aether-terminal --set-shell NAME   make NAME the default shell
+#   aether-terminal --get-shell     print the default shell
 #
-# The preference is read from config.json with a fixed pattern match (the
-# value can only be one of the known names below); "auto" or a missing
+# Shells: zsh (the default), bash, tmux (reattaches a detached session, else
+# starts a new one; the shell inside is zsh), meridian (Meridian Terminal).
+# The default is stored in ~/.config/aether-shell/terminal/shell. A missing
+# shell falls back to zsh. Your login shell is never changed.
+#
+# The terminal preference is read from config.json with a fixed pattern match
+# (the value can only be one of the known names below); "auto" or a missing
 # terminal falls back through the list. Every terminal's own syntax for
 # "run this command" is handled here so callers can always use -e.
 
 set -euo pipefail
 
 CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/aether-shell/config.json"
+SHELL_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/aether-shell/terminal/shell"
 KNOWN=(kitty ghostty wezterm alacritty foot ptyxis gnome-terminal)
+SHELLS=(zsh bash tmux meridian)
 
-preferred=""
-if [ -r "$CONFIG" ]; then
-    preferred="$(grep -oE '"preferred"[[:space:]]*:[[:space:]]*"(kitty|ghostty|wezterm|alacritty|foot|ptyxis|gnome-terminal)"' "$CONFIG" | head -1 | sed -E 's/.*"([a-z-]+)"$/\1/' || true)"
-fi
+have() { command -v "$1" >/dev/null 2>&1; }
+valid_shell() { local s; for s in "${SHELLS[@]}"; do [ "$1" = "$s" ] && return 0; done; return 1; }
+default_shell() {
+    local s=""
+    [ -r "$SHELL_FILE" ] && read -r s < "$SHELL_FILE" || true
+    valid_shell "$s" && echo "$s" || echo zsh
+}
+describe() {
+    case "$1" in
+        zsh) echo "AetherOS prompt, completion, autosuggestions" ;;
+        bash) echo "the classic GNU shell" ;;
+        tmux) echo "split panes, sessions that survive closing the window" ;;
+        meridian) echo "Meridian Terminal & Shell" ;;
+    esac
+}
 
-pick=""
-for t in "$preferred" "${KNOWN[@]}"; do
-    [ -n "$t" ] && command -v "$t" >/dev/null 2>&1 && { pick="$t"; break; }
-done
-if [ -z "$pick" ]; then
-    command -v notify-send >/dev/null 2>&1 && notify-send -u critical "No terminal found" "Install one: sudo dnf install kitty" || true
+# shell_cmd NAME — the command (one word per line) that runs NAME, or nothing
+# when the terminal should simply start the login shell.
+shell_cmd() {
+    local s="$1"
+    case "$s" in tmux|meridian|bash|zsh) have "$s" || s=zsh ;; esac
+    case "$s" in
+        zsh) [ "$(basename "${SHELL:-}")" = zsh ] || printf '%s\n' zsh ;;
+        bash) printf '%s\n' bash ;;
+        # Reattach the first detached session so closing the window loses nothing.
+        tmux) printf '%s\n' sh -c 'd=$(tmux list-sessions -F "#{session_attached} #{session_name}" 2>/dev/null | awk "\$1 == 0 { print \$2; exit }"); if [ -n "$d" ]; then exec tmux attach-session -t "$d"; else exec tmux new-session; fi' ;;
+        meridian) printf '%s\n' meridian ;;
+    esac
+}
+
+pick_terminal() {
+    local preferred="" t
+    if [ -r "$CONFIG" ]; then
+        preferred="$(grep -oE '"preferred"[[:space:]]*:[[:space:]]*"(kitty|ghostty|wezterm|alacritty|foot|ptyxis|gnome-terminal)"' "$CONFIG" | head -1 | sed -E 's/.*"([a-z-]+)"$/\1/' || true)"
+    fi
+    for t in "$preferred" "${KNOWN[@]}"; do
+        [ -n "$t" ] && have "$t" && { echo "$t"; return 0; }
+    done
+    have notify-send && notify-send -u critical "No terminal found" "Install one: sudo dnf install kitty" || true
     echo "aether-terminal: no supported terminal installed" >&2
     exit 127
-fi
+}
 
-if [ "${1:-}" = "-e" ]; then
-    shift
+run_in() {  # run_in TERMINAL CMD… — exec CMD inside TERMINAL
+    local pick="$1"; shift
     case "$pick" in
         gnome-terminal|ptyxis) exec "$pick" -- "$@" ;;
         wezterm) exec wezterm start -- "$@" ;;
         ghostty) exec ghostty -e "$@" ;;
         *) exec "$pick" -e "$@" ;;
     esac
-fi
-exec "$pick" "$@"
+}
+
+open_shell() {  # open_shell NAME
+    local pick cmd=()
+    pick="$(pick_terminal)"
+    mapfile -t cmd < <(shell_cmd "$1")
+    if [ "${#cmd[@]}" -eq 0 ]; then exec "$pick"; fi
+    run_in "$pick" "${cmd[@]}"
+}
+
+set_shell() {
+    valid_shell "${1:-}" || { echo "aether-terminal: unknown shell '${1:-}' (choose: ${SHELLS[*]})" >&2; exit 2; }
+    mkdir -p "$(dirname "$SHELL_FILE")"
+    printf '%s\n' "$1" > "$SHELL_FILE"
+}
+
+pick_shell() {
+    # shellcheck source=SCRIPTDIR/../lib/classic.sh
+    . "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/classic.sh"
+    local def s line choice rows=()
+    def="$(default_shell)"
+    for s in "${SHELLS[@]}"; do
+        line="$(printf '%-9s %s' "$s" "$(describe "$s")")"
+        [ "$s" = "$def" ] && line+="  ·  default"
+        have "$s" || line+="  ·  not installed"
+        rows+=("$line")
+    done
+    rows+=("$(printf '%-9s %s' default "Change the default shell…")")
+    choice="$(printf '%s\n' "${rows[@]}" | amenu "Terminal" | awk '{ print $1 }')" || exit 0
+    case "$choice" in
+        "") exit 0 ;;
+        default)
+            rows=()
+            for s in "${SHELLS[@]}"; do rows+=("$(printf '%-9s %s' "$s" "$(describe "$s")")"); done
+            choice="$(printf '%s\n' "${rows[@]}" | amenu "Default shell" | awk '{ print $1 }')" || exit 0
+            [ -n "$choice" ] || exit 0
+            set_shell "$choice"
+            notify "Terminal" "Default shell: $choice" utilities-terminal -u low
+            open_shell "$choice" ;;
+        *) open_shell "$choice" ;;
+    esac
+}
+
+case "${1:-}" in
+    -e) shift; run_in "$(pick_terminal)" "$@" ;;
+    --shell) valid_shell "${2:-}" || { echo "usage: aether-terminal --shell zsh|bash|tmux|meridian" >&2; exit 2; }; open_shell "$2" ;;
+    --set-shell) set_shell "${2:-}"; echo "default shell: $2" ;;
+    --get-shell) default_shell ;;
+    --pick-shell) pick_shell ;;
+    -h|--help) sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+    "") open_shell "$(default_shell)" ;;
+    *) exec "$(pick_terminal)" "$@" ;;
+esac

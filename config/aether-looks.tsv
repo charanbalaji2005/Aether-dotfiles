@@ -1,0 +1,21 @@
+# AetherOS looks: one line = a complete appearance, applied with `aether-look apply NAME`
+# (or Super+Ctrl+L). Tab-separated columns:
+# name	layout	style	launcher	palette	gaps_in	gaps_out	border	rounding	lock	description
+# palette: "wallpaper" = colours from your wallpaper; anything else is an aether-colors preset.
+# lock: a design from config/hypr/hyprlock/.
+anime	default	anime	aether	wallpaper	6	14	2	16	anime	Anime Dream — soft glass capsules, dusk gradients, film-title lock screen
+cyber	developer	cyber	strip	neon	4	10	2	2	cyber	Cyberpunk Neon — glowing black bar, square segments, neon lock screen
+glass	frost	frost	grid	slate	8	16	1	18	glass	Glass — frosted capsules, icon-grid launcher, frosted lock panel
+emerald	blocks	blocks	side	emerald	6	12	2	10	typography	Emerald — teal blocks, side launcher, large typography lock
+retrowave	dual	anime	grid	dusk	6	14	2	12	stacked	Retro Wave — two bars in purple and pink, stacked pastel lock clock
+devpro	developer	solid	strip	graphite	3	6	2	4	minimal	Developer Pro — dense meters and network speed, minimal lock
+default	default	pills	aether	wallpaper	4	10	2	12	signature	AetherOS — floating capsules, sidebar launcher
+lofi	lofi	lofi	aether	wallpaper	6	12	1	6	minimal	Lofi — thin dark bar, centred date, quiet icons
+frost	frost	frost	grid	slate	6	14	1	14	glass	Frost — frosted grey capsules, icon-grid launcher
+desk	desk	desk	side	wallpaper	6	14	1	12	signature	Desk — menu bar on top, dock with open windows at the bottom
+orbit	orbit	orbit	grid	wallpaper	8	18	0	18	anime	Orbit — no bar, floating workspace pill, mini dock
+retro	retro	retro	strip	synth	4	8	2	8	retro	Retro — one line of coloured readings with separators
+pixel	pixel	pixel	strip	wallpaper	5	10	2	4	cyber	Pixel — compact icon strip, fastfetch on Super+F12
+blocks	blocks	blocks	aether	lagoon	4	8	2	3	typography	Blocks — square accent blocks, boxed workspaces
+home	home	home	grid	wallpaper	8	16	1	14	focus	Home — thin top bar, expanding island (now playing), macOS-style dock with Launchpad
+mono	pixel	mono	strip	mono	6	10	1	4	minimal	Mono — black and white outlined panels, tiled terminals and a big clock

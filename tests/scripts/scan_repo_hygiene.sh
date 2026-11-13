@@ -43,7 +43,7 @@ while IFS=: read -r file line content; do
     echo "  $file:$line:$content"
     section_found=1
     ANY_FOUND=1
-done < <(grep -rniIE "TODO|FIXME|XXX" . --exclude-dir=.git --exclude-dir=__pycache__ -n 2>/dev/null)
+done < <(grep -rniIE "TODO|FIXME|\bXXX\b" . --exclude-dir=.git --exclude-dir=__pycache__ -n 2>/dev/null)
 [ "$section_found" -eq 0 ] && echo "  none found"
 
 echo

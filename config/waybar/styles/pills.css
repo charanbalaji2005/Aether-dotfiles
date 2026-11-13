@@ -1,0 +1,97 @@
+/* AetherOS classic — "pills": floating, each module group in its own capsule.
+   Colours (@bg, @accent, …) come from aether-colors; see colors-fallback.css. */
+* {
+    font-family: "JetBrainsMono Nerd Font", "JetBrains Mono", "Symbols Nerd Font", sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    min-height: 0;
+    border: none;
+    border-radius: 0;
+}
+
+window#waybar { background: transparent; color: @text; }
+window#waybar.hidden { opacity: 0.2; }
+
+tooltip {
+    background: alpha(@bg, 0.96);
+    border: 1px solid @border;
+    border-radius: 12px;
+}
+tooltip label { color: @text; padding: 4px 6px; }
+
+/* Every module is a capsule. */
+#custom-menu, #workspaces, #window, #submap, #clock, #custom-weather, #mpris,
+#tray, #hardware, #quick, #cpu, #memory, #temperature, #disk, #network,
+#bluetooth, #pulseaudio, #backlight, #battery, #custom-notification,
+#custom-power, #power-profiles-daemon, #idle_inhibitor, #language,
+#custom-gamemode, #custom-nightlight, #custom-theme, #custom-wallpaper, #custom-settings {
+    background: alpha(@surface, 0.92);
+    border: 1px solid alpha(@border, 0.7);
+    border-radius: 14px;
+    padding: 2px 12px;
+    margin: 2px 0;
+    color: @text;
+}
+
+#hardware, #quick { padding: 0 6px; }
+#hardware > *, #quick > * { background: transparent; border: none; margin: 0; padding: 2px 6px; }
+
+#custom-menu {
+    background: linear-gradient(135deg, @accent, @accent2);
+    color: @on_accent;
+    font-size: 16px;
+    padding: 2px 14px 2px 12px;
+}
+#custom-menu:hover { background: @accent2; }
+
+#workspaces { padding: 2px 4px; }
+#workspaces button {
+    color: @muted;
+    padding: 0 6px;
+    margin: 2px 1px;
+    border-radius: 10px;
+    background: transparent;
+    transition: all 200ms ease;
+}
+#workspaces button.active {
+    color: @on_accent;
+    background: @accent;
+    padding: 0 14px;
+}
+#workspaces button.urgent { color: @bg; background: @urgent; }
+#workspaces button.empty { color: alpha(@muted, 0.6); }
+#workspaces button:hover { background: alpha(@accent, 0.25); color: @text; box-shadow: none; }
+
+#window { color: @subtext; font-weight: 500; }
+window#waybar.empty #window { background: transparent; border-color: transparent; }
+
+#clock { color: @accent; font-weight: 700; }
+#mpris { color: @subtext; }
+#mpris.paused { color: @muted; }
+
+#cpu.warning, #memory.warning, #battery.warning { color: @warn; }
+#cpu.critical, #memory.critical, #temperature.critical { color: @urgent; }
+#battery.critical:not(.charging) {
+    color: @bg;
+    background: @urgent;
+    animation: aether-blink 1s steps(2) infinite;
+}
+#battery.charging, #battery.plugged { color: @ok; }
+@keyframes aether-blink { to { background: alpha(@urgent, 0.4); } }
+
+#network.disconnected, #network.disabled, #bluetooth.off, #bluetooth.disabled,
+#pulseaudio.muted, #pulseaudio.source-muted { color: @muted; }
+#bluetooth.connected { color: @info; }
+#idle_inhibitor.activated, #custom-gamemode.on, #custom-nightlight.on { color: @warn; }
+#power-profiles-daemon.performance { color: @urgent; }
+#power-profiles-daemon.power-saver { color: @ok; }
+
+#custom-notification { padding: 2px 12px; }
+#custom-power { color: @urgent; padding: 2px 13px 2px 11px; }
+#custom-power:hover { background: @urgent; color: @bg; }
+
+#tray { padding: 2px 10px; }
+#tray > .needs-attention { background: alpha(@urgent, 0.3); border-radius: 8px; }
+#tray menu { background: @bg; color: @text; border: 1px solid @border; border-radius: 10px; }
+
+#custom-weather.stale { color: @muted; }

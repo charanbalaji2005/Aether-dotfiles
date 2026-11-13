@@ -30,6 +30,8 @@ git clone https://github.com/OWNER/aetheros-dotfiles ~/aetheros-dotfiles && cd ~
 
 | Option | Meaning |
 |---|---|
+| `--interface classic\|aether` | classic: Waybar · Rofi · SwayNC · Wlogout · Hyprlock · swww (default); aether: the Quickshell shell. Re-runs keep your current choice. See [docs/CLASSIC_INTERFACE.md](docs/CLASSIC_INTERFACE.md) |
+| `--no-fonts` | don't offer JetBrainsMono Nerd Font (the classic interface's icons need a Nerd Font) |
 | `--mode minimal\|recommended\|complete` | package sets (default `recommended`, see §3) |
 | `--yes` | don't ask before installing packages from **already enabled** repositories |
 | `--enable-copr` | allow the COPR repositories in `packages/fedora/repos.conf` (otherwise asked one by one; never implied by `--yes`) |

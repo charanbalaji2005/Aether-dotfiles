@@ -1,0 +1,14 @@
+// AetherOS classic — "bottom": the default set, docked to the bottom edge.
+{
+    "include": ["~/.config/waybar/modules.jsonc"],
+    "layer": "top",
+    "position": "bottom",
+    "height": 34,
+    "margin-bottom": 6,
+    "margin-left": 10,
+    "margin-right": 10,
+    "spacing": 6,
+    "modules-left": ["custom/menu", "hyprland/workspaces", "hyprland/window"],
+    "modules-center": ["clock", "custom/weather", "mpris"],
+    "modules-right": ["tray", "group/hardware", "network", "bluetooth", "pulseaudio", "backlight", "battery", "custom/notification", "custom/power"]
+}

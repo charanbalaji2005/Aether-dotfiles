@@ -1,0 +1,17 @@
+/* Look "Mono": black and white, thin outlined panels with square corners —
+   pairs with a tiled layout of terminals, a big clock and a visualiser. */
+@import "_base.css";
+* { font-size: 11px; }
+window#waybar { background: transparent; color: @text; }
+.modules-left, .modules-center, .modules-right {
+    background: alpha(@bg, 0.82);
+    border: 1px solid alpha(@fg, 0.35);
+    border-radius: 4px;
+    padding: 0 6px;
+    margin: 4px 0;
+}
+.modules-left > widget > *, .modules-center > widget > *, .modules-right > widget > * { padding: 0 6px; color: @subtext; }
+#workspaces button { color: alpha(@text, 0.45); padding: 0 4px; }
+#workspaces button.active { color: @bg; background: @text; border-radius: 2px; }
+#clock { color: @text; font-weight: 700; }
+#custom-power { color: @text; }

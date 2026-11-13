@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# powerprofilesctl fallback for systems using tuned-ppd (Fedora 41+ default).
+#
+# tuned-ppd provides the power-profiles D-Bus API but not the
+# powerprofilesctl command, and it conflicts with power-profiles-daemon.
+# This implements the subcommands AetherOS uses (get, set, list) over D-Bus.
+# If the real powerprofilesctl is installed, it is used instead.
+
+for p in /usr/bin/powerprofilesctl /usr/local/bin/powerprofilesctl; do
+    [ -x "$p" ] && [ "$p" != "$(readlink -f "$0")" ] && exec "$p" "$@"
+done
+
+BUS=(busctl --system)
+DEST=org.freedesktop.UPower.PowerProfiles
+OBJ=/org/freedesktop/UPower/PowerProfiles
+IFACE=org.freedesktop.UPower.PowerProfiles
+
+active() { "${BUS[@]}" get-property "$DEST" "$OBJ" "$IFACE" ActiveProfile 2>/dev/null | sed -E 's/^s "(.*)"$/\1/'; }
+
+profiles() {
+    "${BUS[@]}" get-property "$DEST" "$OBJ" "$IFACE" Profiles 2>/dev/null |
+        grep -oE '"Profile" s "[a-z-]+"' | sed -E 's/.*"([a-z-]+)"$/\1/'
+}
+
+case "${1:-list}" in
+    get)
+        cur="$(active)"
+        [ -n "$cur" ] || { echo "powerprofilesctl: power profiles service not available" >&2; exit 1; }
+        echo "$cur" ;;
+    set)
+        [ -n "${2:-}" ] || { echo "Usage: powerprofilesctl set PROFILE" >&2; exit 1; }
+        profiles | grep -qx "$2" || { echo "powerprofilesctl: unknown profile '$2'" >&2; exit 1; }
+        "${BUS[@]}" set-property "$DEST" "$OBJ" "$IFACE" ActiveProfile s "$2" ;;
+    list)
+        cur="$(active)"
+        # Same layout as the real command: newest-first, "*" marks the active one.
+        profiles | tac | while read -r p; do
+            [ "$p" = "$cur" ] && printf '* %s:\n    Driver: tuned\n\n' "$p" || printf '  %s:\n    Driver: tuned\n\n' "$p"
+        done ;;
+    version|--version) echo "aether powerprofilesctl fallback (tuned-ppd)" ;;
+    *)
+        echo "Usage: powerprofilesctl [get|set PROFILE|list]" >&2
+        exit 1 ;;
+esac

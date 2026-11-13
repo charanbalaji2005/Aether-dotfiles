@@ -1,0 +1,46 @@
+#!/usr/bin/bash
+# aether-lockinfo — small status lines for the Hyprlock screen.
+#
+#   aether-lockinfo battery   "󰁹 82%" (with a charging mark), nothing on desktops
+#   aether-lockinfo media     "Artist — Title" of the playing MPRIS player, or nothing
+#   aether-lockinfo layout    active keyboard layout
+#   aether-lockinfo status    network, volume and battery icons (real state only)
+set -uo pipefail
+
+case "${1:-}" in
+    battery)
+        for b in /sys/class/power_supply/BAT*; do
+            [ -r "$b/capacity" ] || continue
+            cap="$(cat "$b/capacity")"; st="$(cat "$b/status" 2>/dev/null)"
+            icons=(󰂎 󰁺 󰁻 󰁼 󰁽 󰁾 󰁿 󰂀 󰂁 󰂂 󰁹)
+            i=$(( cap / 10 )); [ "$i" -gt 10 ] && i=10
+            mark=""; [ "$st" = Charging ] && mark=" 󱐋"
+            printf '%s %s%%%s\n' "${icons[$i]}" "$cap" "$mark"
+            exit 0
+        done ;;
+    media)
+        command -v playerctl >/dev/null 2>&1 || exit 0
+        [ "$(playerctl status 2>/dev/null)" = Playing ] || exit 0
+        playerctl metadata --format '󰎆  {{ artist }} — {{ title }}' 2>/dev/null | cut -c1-80 ;;
+    layout)
+        command -v hyprctl >/dev/null 2>&1 || exit 0
+        hyprctl -j devices 2>/dev/null | python3 -c 'import json, sys
+for k in json.load(sys.stdin).get("keyboards", []):
+    if k.get("main"):
+        print("󰌌  " + k.get("active_keymap", "")); break' 2>/dev/null ;;
+    status)
+        # Real state only: network, volume, battery — each omitted when unknown.
+        out=""
+        if command -v nmcli >/dev/null 2>&1; then
+            case "$(nmcli -t -f STATE general 2>/dev/null)" in
+                connected*) out+="󰖩  " ;; *) out+="󰖪  " ;;
+            esac
+        fi
+        if command -v wpctl >/dev/null 2>&1; then
+            v="$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null)"
+            case "$v" in *MUTED*) out+="󰝟  " ;; "") ;; *) out+="󰕾 $(awk '{printf "%d", $2 * 100}' <<< "$v")%  " ;; esac
+        fi
+        out+="$("$0" battery)"
+        printf '%s\n' "$out" ;;
+    *) echo "usage: aether-lockinfo battery|media|layout|status" >&2; exit 2 ;;
+esac

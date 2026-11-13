@@ -1,0 +1,41 @@
+/* Look "Retro": a dense line of coloured readings on a dark rounded bar,
+   thin separators between them — every module gets its own hue. */
+@import "_base.css";
+* { font-size: 13px; font-weight: 700; }
+window#waybar {
+    background: alpha(@bg, 0.88);
+    border: 1px solid alpha(@accent, 0.45);
+    border-radius: 12px;
+    color: @text;
+}
+.modules-left > widget > *, .modules-center > widget > *, .modules-right > widget > * {
+    padding: 0 8px;
+    margin: 6px 0;
+    border-right: 1px solid alpha(@fg, 0.28);
+}
+#custom-power { border-right: none; }
+#workspaces { border-right: 1px solid alpha(@fg, 0.28); }
+#custom-fedora {
+    background: @blue;
+    color: @bg;
+    border-radius: 10px;
+    padding: 0 10px;
+    margin: 3px 4px 3px 3px;
+}
+#workspaces button { color: @subtext; padding: 0 4px; font-size: 14px; }
+#workspaces button.active { color: @yellow; }
+#workspaces button.urgent { color: @red; }
+#cpu { color: @green; }
+#temperature { color: @blue; }
+#memory { color: @red; }
+#backlight { color: @yellow; }
+#idle_inhibitor { color: @yellow; }
+#clock { color: @green; }
+#custom-notification { color: @text; }
+#bluetooth { color: @blue; }
+#network { color: @green; }
+#battery { color: @yellow; }
+#pulseaudio { color: @cyan; }
+#pulseaudio.source-muted { color: @muted; }
+#language { color: @yellow; }
+#custom-power { color: @red; padding-right: 10px; }

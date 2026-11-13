@@ -1,0 +1,227 @@
+#!/usr/bin/bash
+# aether-interface — choose which AetherOS desktop interface Hyprland runs.
+#
+#   aether-interface status
+#   aether-interface set classic [--no-reload]   Waybar · Rofi · SwayNC · Wlogout · Hyprlock/Hypridle · swww
+#   aether-interface set aether  [--no-reload]   the Quickshell shell (panel, dock, island…)
+#                                [--no-services] don't enable/disable systemd user units
+#   aether-interface doctor                      check the classic interface's programs and files
+#
+# The choice lives in ~/.config/aether-shell/interface. `set` writes the two
+# Hyprland fragments hyprland.conf sources (interface.conf: autostart and
+# keybinds; interface-theme.conf: border colours), enables the matching
+# systemd user units and — inside a running session, unless --no-reload —
+# stops the old interface and starts the new one.
+
+set -euo pipefail
+# shellcheck source=SCRIPTDIR/../lib/classic.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/classic.sh"
+
+CFG="${XDG_CONFIG_HOME:-$HOME/.config}"
+CHOICE_FILE="$CFG/aether-shell/interface"
+FRAG="$CFG/aether-shell/hypr"
+AETHER_UNITS=(aether-shell.service aether-idle.service)
+
+current() {
+    local v; v="$(cat "$CHOICE_FILE" 2>/dev/null || true)"
+    case "$v" in classic|aether) echo "$v" ;; *) echo classic ;; esac
+}
+
+write_atomic() {  # write_atomic <path> <content>
+    mkdir -p "$(dirname "$1")"
+    local tmp; tmp="$(mktemp -p "$(dirname "$1")")"
+    printf '%s' "$2" > "$tmp"
+    mv "$tmp" "$1"
+}
+
+user_systemd() { have systemctl && systemctl --user show-environment >/dev/null 2>&1; }
+
+cmd_set() {
+    local to="${1:-}" reload=1 services=1 a
+    shift || true
+    for a in "$@"; do
+        case "$a" in
+            --no-reload) reload=0 ;;
+            --no-services) services=0 ;;
+            *) echo "unknown option: $a" >&2; exit 2 ;;
+        esac
+    done
+    case "$to" in classic|aether) ;; *) echo "usage: aether-interface set classic|aether [--no-reload] [--no-services]" >&2; exit 2 ;; esac
+    local from; from="$(current)"
+
+    write_atomic "$CHOICE_FILE" "$to"$'\n'
+    write_atomic "$FRAG/interface.conf" "# Written by aether-interface — the active interface ($to).
+# Change it with: aether-interface set classic|aether
+source = ~/.config/hypr/interfaces/$to.conf
+"
+    if [ "$to" = classic ]; then
+        # aether-colors writes the real border colours here.
+        aether-colors apply --no-reload >/dev/null || {
+            write_atomic "$FRAG/interface-theme.conf" "# aether-colors could not run; Hyprland keeps its default borders.
+"
+            echo "aether-interface: aether-colors failed — run it in a terminal for details" >&2
+        }
+        # The look's gaps/rounding belong to the classic interface.
+        local look; look="$(cstate_get look)"
+        if [ -n "$look" ]; then
+            AETHER_LOOK_NO_RESTART=1 aether-look apply "$look" >/dev/null 2>&1 || true
+        fi
+    else
+        write_atomic "$FRAG/interface-theme.conf" "# The aether shell themes Hyprland through theme.conf (aether theme apply).
+"
+        write_atomic "$FRAG/look.conf" "# Looks (aether-look) apply to the classic interface only.
+"
+    fi
+
+    if [ "$services" -eq 1 ] && user_systemd; then
+        systemctl --user daemon-reload 2>/dev/null || true
+        if [ "$to" = classic ]; then
+            systemctl --user disable "${AETHER_UNITS[@]}" >/dev/null 2>&1 || true
+        else
+            systemctl --user enable "${AETHER_UNITS[@]}" >/dev/null 2>&1 \
+                || echo "aether-interface: couldn't enable ${AETHER_UNITS[*]} (are the unit files linked?)" >&2
+        fi
+    fi
+
+    echo "Interface: $to"
+    if [ "$reload" -eq 1 ] && in_hyprland && [ "$from" != "$to" ]; then
+        if [ "$to" = classic ]; then
+            user_systemd && systemctl --user stop "${AETHER_UNITS[@]}" aether-shell-safe.service 2>/dev/null || true
+            pkill -f 'qs -c aether-shell' 2>/dev/null || true
+            hyprctl reload >/dev/null
+            aether-classic-start
+        else
+            aether-classic-start --stop
+            hyprctl reload >/dev/null
+            if user_systemd; then systemctl --user start "${AETHER_UNITS[@]}" 2>/dev/null || true
+            else setsid -f qs -c aether-shell >/dev/null 2>&1; fi
+        fi
+        notify "Interface switched" "Now running the $to interface" preferences-desktop -e
+    elif [ "$reload" -eq 1 ] && ! in_hyprland; then
+        echo "Not inside Hyprland: the $to interface starts at your next login."
+    fi
+}
+
+# ── doctor ──────────────────────────────────────────────────────────────
+DOC_FAIL=0
+d_ok()   { printf '  \033[32mok\033[0m    %s\n' "$1"; }
+d_warn() { printf '  \033[33mwarn\033[0m  %s\n' "$1"; }
+d_fail() { printf '  \033[31mFAIL\033[0m  %s\n' "$1"; DOC_FAIL=1; }
+
+req() {  # req <command> <package> <what for>
+    if have "$1"; then d_ok "$1"; else d_fail "$1 missing — $3 (sudo dnf install $2)"; fi
+}
+opt() {  # opt <command> <package> <feature that falls back or hides>
+    if have "$1"; then d_ok "$1"; else d_warn "$1 missing — $3 (package: $2)"; fi
+}
+
+cmd_doctor() {
+    echo "AetherOS classic interface — health check (active interface: $(current))"
+    echo
+    echo "Required"
+    req Hyprland hyprland "the compositor"
+    req waybar waybar "the bar"
+    req rofi rofi-wayland "launcher and every menu"
+    req swaync SwayNotificationCenter "notifications"
+    if have swww || have awww; then d_ok "swww/awww"; else d_fail "swww missing — wallpapers (sudo dnf install swww)"; fi
+    req hyprlock hyprlock "the lock screen"
+    req hypridle hypridle "dim, lock and screen-off when idle"
+    req python3 python3 "colour engine and helpers"
+    req notify-send libnotify "OSD and notifications from scripts"
+    req wl-copy wl-clipboard "clipboard"
+    req cliphist cliphist "clipboard history"
+    req grim grim "screenshots"
+    req slurp slurp "area selection"
+    req wpctl wireplumber "volume keys"
+    req brightnessctl brightnessctl "brightness keys"
+    req playerctl playerctl "media keys"
+    req nmcli NetworkManager "Wi-Fi menu"
+    echo
+    echo "Optional (the feature hides itself or falls back)"
+    opt wlogout wlogout "graphical power menu; a Rofi power menu is used instead"
+    opt wallust wallust "wallust palettes; the built-in extractor is used instead (cargo install wallust)"
+    if have magick || have convert; then d_ok "ImageMagick"; else d_warn "ImageMagick missing — colours from wallpapers and previews (package: ImageMagick)"; fi
+    opt swappy swappy "screenshot annotation"
+    opt pypr pyprland "drop-down terminal and zoom (pipx install pyprland)"
+    opt mpvpaper mpvpaper "video wallpapers"
+    opt pactl pulseaudio-utils "audio device menu"
+    opt pavucontrol pavucontrol "sound mixer"
+    opt bluetoothctl bluez "Bluetooth menu"
+    opt blueman-manager blueman "Bluetooth manager and tray"
+    opt nm-applet network-manager-applet "network tray icon"
+    opt hyprsunset hyprsunset "night light"
+    opt powerprofilesctl power-profiles-daemon "power profiles"
+    opt nwg-look nwg-look "GTK appearance"
+    opt nwg-displays nwg-displays "display layout editor"
+    opt qt6ct qt6ct "Qt appearance"
+    opt kvantummanager kvantum "Kvantum Qt themes"
+    opt thunar Thunar "file manager (Super+E)"
+    opt qalc qalculate "calculator (a built-in evaluator is used instead)"
+    opt wtype wtype "typing the picked emoji (it is copied either way)"
+    opt btop btop "system monitor"
+    opt yazi yazi "terminal file manager"
+    opt fastfetch fastfetch "system summary"
+    opt wf-recorder wf-recorder "screen recording"
+    echo
+    echo "Fonts"
+    if have fc-list && fc-list 2>/dev/null | grep -i "Nerd Font" >/dev/null; then d_ok "a Nerd Font is installed"
+    else d_warn "no Nerd Font: bar and menu icons show as boxes (./install.sh --install installs JetBrainsMono Nerd Font, or scripts/install-fonts.sh)"; fi
+    echo
+    echo "Configuration"
+    local f
+    for f in "$CFG/waybar/modules.jsonc" "$CFG/rofi/config.rasi" "$CFG/swaync/config.json" "$CFG/wlogout/layout" "$CFG/hypr/hyprlock.conf" "$CFG/hypr/hypridle.conf"; do
+        if [ -e "$f" ]; then d_ok "${f/#$HOME/\~}"; else d_fail "${f/#$HOME/\~} missing — run scripts/setup-symlinks.sh"; fi
+    done
+    for f in "$CLASSIC_DIR/colors/rofi.rasi" "$CLASSIC_DIR/waybar/style.css" "$CLASSIC_DIR/colors/hyprlock.conf"; do
+        if [ -s "$f" ]; then d_ok "${f/#$HOME/\~}"; else d_fail "${f/#$HOME/\~} missing — run: aether-colors apply"; fi
+    done
+    if grep -qs "interfaces/classic.conf\|interfaces/aether.conf" "$FRAG/interface.conf"; then d_ok "interface.conf selects: $(current)"
+    else d_fail "interface.conf doesn't select an interface — run: aether-interface set classic"; fi
+    if have python3 && [ -d "$CFG/waybar/layouts" ]; then
+        local bad
+        bad="$(python3 -I - "$CFG/waybar" <<'PY'
+import json, os, re, sys
+def strip(t):
+    out, i, s = [], 0, False
+    while i < len(t):
+        c = t[i]
+        if s:
+            out.append(c)
+            if c == "\\": out.append(t[i + 1]); i += 1
+            elif c == '"': s = False
+        elif c == '"': s = True; out.append(c)
+        elif t.startswith("//", i): i = t.find("\n", i); i = len(t) if i < 0 else i; continue
+        elif t.startswith("/*", i): i = t.find("*/", i) + 2; continue
+        else: out.append(c)
+        i += 1
+    return re.sub(r",(\s*[}\]])", r"\1", "".join(out))
+root = sys.argv[1]
+files = [os.path.join(root, "modules.jsonc")] + [os.path.join(root, "layouts", f) for f in sorted(os.listdir(os.path.join(root, "layouts")))]
+for f in files:
+    try: json.loads(strip(open(f, encoding="utf-8").read()))
+    except Exception as e: print("%s: %s" % (os.path.basename(f), e))
+PY
+)"
+        if [ -z "$bad" ]; then d_ok "Waybar layouts parse"; else d_fail "Waybar JSON errors: $bad"; fi
+    fi
+    if in_hyprland; then
+        echo
+        echo "Running now"
+        local p
+        for p in waybar swaync hypridle; do
+            if pgrep -x "$p" >/dev/null; then d_ok "$p"; else d_warn "$p is not running (aether-classic-start starts it)"; fi
+        done
+        if pgrep -x swww-daemon >/dev/null || pgrep -x awww-daemon >/dev/null; then d_ok "wallpaper daemon"; else d_warn "wallpaper daemon is not running"; fi
+    fi
+    echo
+    if [ "$DOC_FAIL" -eq 0 ]; then echo "No blocking problems."; else echo "Fix the FAIL lines above."; fi
+    return "$DOC_FAIL"
+}
+
+case "${1:-status}" in
+    status) current ;;
+    set) shift; cmd_set "$@" ;;
+    doctor) cmd_doctor ;;
+    -h|--help|help) sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+    *) echo "usage: aether-interface status | set classic|aether | doctor" >&2; exit 2 ;;
+esac

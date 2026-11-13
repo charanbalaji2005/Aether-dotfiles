@@ -1,0 +1,410 @@
+// AetherOS classic — Waybar module definitions, shared by every layout in
+// layouts/. A layout only chooses which modules appear and where.
+// Icons need a Nerd Font (JetBrainsMono Nerd Font is installed by install.sh).
+{
+    // ── launcher / session ──────────────────────────────────────────────
+    "custom/menu": {
+        "format": "󱓞",
+        "tooltip-format": "Applications (Super+D)\nRight-click: quick settings (Super+A)",
+        "on-click": "aether-menu apps",
+        "on-click-right": "aether-menu settings",
+        "on-click-middle": "aether-menu keys"
+    },
+    "custom/power": {
+        "format": "󰐥",
+        "tooltip-format": "Power menu (Super+Esc)\nRight-click: lock",
+        "on-click": "aether-powermenu",
+        "on-click-right": "aether-powermenu run lock"
+    },
+    "custom/settings": {
+        "format": "󰒓",
+        "tooltip-format": "Quick settings (Super+A)",
+        "on-click": "aether-menu settings"
+    },
+    "custom/wallpaper": {
+        "format": "󰸉",
+        "tooltip-format": "Wallpaper (Super+W)\nRight-click: random · Middle: theme",
+        "on-click": "aether-wall select",
+        "on-click-right": "aether-wall random",
+        "on-click-middle": "aether-menu theme"
+    },
+    "custom/theme": {
+        "exec": "aether-colors waybar-json",
+        "return-type": "json",
+        "interval": "once",
+        "signal": 8,
+        "format": "{icon}",
+        "format-icons": { "dark": "󰖔", "light": "󰖙" },
+        "tooltip-format": "Dark / light (Super+Shift+T)",
+        "on-click": "aether-colors mode toggle; pkill -RTMIN+8 waybar",
+        "on-click-right": "aether-menu theme"
+    },
+    "custom/separator": { "format": "│", "tooltip": false },
+
+    // ── workspaces / windows ────────────────────────────────────────────
+    "hyprland/workspaces": {
+        "format": "{icon}",
+        "format-icons": {
+            "active": "●",
+            "urgent": "󰀨",
+            "default": "●",
+            "empty": "○"
+        },
+        "persistent-workspaces": { "*": 5 },
+        "on-scroll-up": "hyprctl dispatch workspace e-1",
+        "on-scroll-down": "hyprctl dispatch workspace e+1",
+        "on-click": "activate",
+        "sort-by-number": true
+    },
+    "hyprland/workspaces#numbers": {
+        "format": "{name}",
+        "persistent-workspaces": { "*": 5 },
+        "on-click": "activate",
+        "sort-by-number": true
+    },
+    "hyprland/window": {
+        "format": "{title}",
+        "max-length": 48,
+        "separate-outputs": true,
+        "rewrite": {
+            "": "Desktop",
+            "(.*) — Mozilla Firefox": "󰈹  $1",
+            "(.*) - Visual Studio Code": "󰨞  $1",
+            "(.*) - Thunar": "󰉋  $1"
+        }
+    },
+    "hyprland/language": {
+        "format": "󰌌 {short}",
+        "on-click": "hyprctl switchxkblayout current next"
+    },
+    "hyprland/submap": { "format": "󰘳 {}", "tooltip": false },
+
+    // ── time ────────────────────────────────────────────────────────────
+    "clock": {
+        "format": "{:%H:%M}",
+        "format-alt": "{:%a %d %b · %H:%M}",
+        "format-alt-click": 2,
+        "on-click": "aether-calendar",
+        "tooltip-format": "<tt>{calendar}</tt>",
+        "calendar": {
+            "mode": "month",
+            "mode-mon-col": 3,
+            "on-scroll": 1,
+            "format": {
+                "months": "<b>{}</b>",
+                "weekdays": "<b>{}</b>",
+                "today": "<b><u>{}</u></b>"
+            }
+        },
+        "actions": {
+            "on-click-right": "mode",
+            "on-scroll-up": "shift_up",
+            "on-scroll-down": "shift_down"
+        }
+    },
+    "custom/weather": {
+        "exec": "aether-weather",
+        "return-type": "json",
+        "interval": 900,
+        "tooltip": true,
+        "on-click": "aether-calendar",
+        "on-click-right": "xdg-open https://wttr.in"
+    },
+
+    // ── system ──────────────────────────────────────────────────────────
+    "cpu": {
+        "format": "󰻠 {usage}%",
+        "interval": 5,
+        "states": { "warning": 70, "critical": 90 },
+        "on-click": "aether-terminal -e btop"
+    },
+    "memory": {
+        "format": "󰍛 {percentage}%",
+        "interval": 10,
+        "tooltip-format": "{used:0.1f} / {total:0.1f} GiB used\nSwap {swapUsed:0.1f} / {swapTotal:0.1f} GiB",
+        "states": { "warning": 75, "critical": 90 },
+        "on-click": "aether-terminal -e btop"
+    },
+    "temperature": {
+        "format": "{icon} {temperatureC}°",
+        "format-icons": ["", "", "", "", ""],
+        "critical-threshold": 85,
+        "interval": 10,
+        "tooltip-format": "{temperatureC}°C"
+    },
+    "disk": {
+        "format": "󰋊 {percentage_used}%",
+        "path": "/",
+        "interval": 120,
+        "tooltip-format": "{used} / {total} used on {path}"
+    },
+    "group/hardware": {
+        "orientation": "inherit",
+        "drawer": { "transition-duration": 300, "children-class": "drawer-child", "transition-left-to-right": false },
+        "modules": ["cpu", "memory", "temperature", "disk"]
+    },
+    "power-profiles-daemon": {
+        "format": "{icon}",
+        "tooltip-format": "Power profile: {profile}",
+        "format-icons": { "default": "󰾅", "performance": "󰓅", "balanced": "󰾅", "power-saver": "󰾆" }
+    },
+    "idle_inhibitor": {
+        "format": "{icon}",
+        "format-icons": { "activated": "󰅶", "deactivated": "󰾪" },
+        "tooltip-format-activated": "Keep awake: on",
+        "tooltip-format-deactivated": "Keep awake: off"
+    },
+    "custom/gamemode": {
+        "exec": "aether-toggle waybar-json gamemode",
+        "return-type": "json",
+        "interval": 10,
+        "format": "{icon}",
+        "format-icons": { "on": "󰊴", "off": "󰺷" },
+        "on-click": "aether-toggle gamemode; sleep 0.3; pkill -RTMIN+9 waybar",
+        "signal": 9
+    },
+    "custom/nightlight": {
+        "exec": "aether-toggle waybar-json nightlight",
+        "return-type": "json",
+        "interval": 30,
+        "format": "{icon}",
+        "format-icons": { "on": "󰛨", "off": "󰹏" },
+        "on-click": "aether-toggle nightlight; sleep 0.3; pkill -RTMIN+10 waybar",
+        "signal": 10
+    },
+
+    // ── connectivity ────────────────────────────────────────────────────
+    "network": {
+        "format-wifi": "{icon}",
+        "format-ethernet": "󰈀",
+        "format-linked": "󰈀",
+        "format-disconnected": "󰤮",
+        "format-disabled": "󰤭",
+        "format-icons": ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"],
+        "tooltip-format-wifi": "{essid} · {signalStrength}%\n{ipaddr}\n {bandwidthDownBytes}   {bandwidthUpBytes}",
+        "tooltip-format-ethernet": "{ifname} · {ipaddr}\n {bandwidthDownBytes}   {bandwidthUpBytes}",
+        "tooltip-format-disconnected": "Disconnected",
+        "interval": 5,
+        "on-click": "aether-menu wifi",
+        "on-click-right": "nm-connection-editor"
+    },
+    "network#speed": {
+        "format": " {bandwidthDownBytes}  {bandwidthUpBytes}",
+        "format-disconnected": "",
+        "interval": 2,
+        "tooltip": false
+    },
+    "bluetooth": {
+        "format": "󰂯",
+        "format-disabled": "󰂲",
+        "format-off": "󰂲",
+        "format-connected": "󰂱 {num_connections}",
+        "tooltip-format": "{controller_alias} · {status}",
+        "tooltip-format-connected": "{device_enumerate}",
+        "tooltip-format-enumerate-connected": "{device_alias}",
+        "tooltip-format-enumerate-connected-battery": "{device_alias} · {device_battery_percentage}%",
+        "on-click": "aether-menu bluetooth",
+        "on-click-right": "blueman-manager"
+    },
+
+    // ── sound / light / power ───────────────────────────────────────────
+    "pulseaudio": {
+        "format": "{icon} {volume}%",
+        "format-muted": "󰝟",
+        "format-bluetooth": "󰂰 {volume}%",
+        "format-icons": { "headphone": "󰋋", "headset": "󰋎", "default": ["󰕿", "󰖀", "󰕾"] },
+        "scroll-step": 5,
+        "max-volume": 100,
+        "tooltip-format": "{desc} · {volume}%",
+        "on-click": "aether-osd volume mute",
+        "on-click-right": "pavucontrol",
+        "on-click-middle": "aether-menu audio",
+        "on-scroll-up": "aether-osd volume up",
+        "on-scroll-down": "aether-osd volume down"
+    },
+    "pulseaudio#mic": {
+        "format": "{format_source}",
+        "format-source": "󰍬 {volume}%",
+        "format-source-muted": "󰍭",
+        "tooltip-format": "{source_desc} · {source_volume}%",
+        "on-click": "aether-osd mic mute",
+        "on-click-right": "pavucontrol -t 4",
+        "on-scroll-up": "aether-osd mic up",
+        "on-scroll-down": "aether-osd mic down"
+    },
+    "backlight": {
+        "format": "{icon} {percent}%",
+        "format-icons": ["󰃞", "󰃟", "󰃠"],
+        "on-scroll-up": "aether-osd brightness up",
+        "on-scroll-down": "aether-osd brightness down"
+    },
+    "battery": {
+        "format": "{icon} {capacity}%",
+        "format-charging": "󰂄 {capacity}%",
+        "format-plugged": "󰚥 {capacity}%",
+        "format-full": "󰁹 Full",
+        "format-icons": ["󰂎", "󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"],
+        "states": { "warning": 30, "critical": 15 },
+        "tooltip-format": "{timeTo} · {power:.1f} W",
+        "interval": 30,
+        "on-click": "aether-menu profile"
+    },
+
+    // ── media / tray / notifications ────────────────────────────────────
+    "mpris": {
+        "format": "{player_icon} {dynamic}",
+        "format-paused": "{status_icon} <i>{dynamic}</i>",
+        "dynamic-order": ["artist", "title"],
+        "dynamic-len": 36,
+        "player-icons": { "default": "󰎆", "firefox": "󰈹", "spotify": "", "mpv": "" },
+        "status-icons": { "paused": "󰏤" },
+        "on-click": "playerctl play-pause",
+        "on-click-right": "playerctl next",
+        "on-scroll-up": "playerctl previous",
+        "on-scroll-down": "playerctl next"
+    },
+    "tray": { "icon-size": 15, "spacing": 8, "show-passive-items": false },
+    "custom/notification": {
+        "exec": "swaync-client -swb",
+        "return-type": "json",
+        "escape": true,
+        "format": "{icon}",
+        "format-icons": {
+            "notification": "󰂚<span foreground='red'><sup></sup></span>",
+            "none": "󰂜",
+            "dnd-notification": "󰂛<span foreground='red'><sup></sup></span>",
+            "dnd-none": "󰂛",
+            "inhibited-notification": "󰂚<span foreground='red'><sup></sup></span>",
+            "inhibited-none": "󰂜",
+            "dnd-inhibited-notification": "󰂛<span foreground='red'><sup></sup></span>",
+            "dnd-inhibited-none": "󰂛"
+        },
+        "tooltip-format": "Notifications (Super+N)\nRight-click: do not disturb",
+        "on-click": "swaync-client -t -sw",
+        "on-click-right": "swaync-client -d -sw"
+    },
+    "group/quick": {
+        "orientation": "inherit",
+        "drawer": { "transition-duration": 300, "children-class": "drawer-child", "transition-left-to-right": false },
+        "modules": ["custom/settings", "custom/theme", "custom/wallpaper", "custom/nightlight", "custom/gamemode", "idle_inhibitor"]
+    },
+    // ── look-specific variants (see config/aether-looks.tsv) ────────────
+    "hyprland/workspaces#boxes": {
+        "format": "{name}",
+        "persistent-workspaces": { "*": 6 },
+        "on-click": "activate",
+        "sort-by-number": true
+    },
+    "hyprland/workspaces#ghosts": {
+        "format": "{icon}",
+        "format-icons": { "active": "󰮯", "urgent": "󰊠", "default": "󰊠", "empty": "󰊠" },
+        "persistent-workspaces": { "*": 5 },
+        "on-click": "activate",
+        "sort-by-number": true
+    },
+    "hyprland/workspaces#dots": {
+        "format": "{icon}",
+        "format-icons": { "active": "󰮯", "default": "●", "empty": "○" },
+        "persistent-workspaces": { "*": 8 },
+        "on-click": "activate",
+        "sort-by-number": true
+    },
+    "clock#date": {
+        "format": "{:%a %d %b — %H:%M}",
+        "on-click": "aether-calendar",
+        "tooltip-format": "<tt>{calendar}</tt>",
+        "calendar": { "mode": "month", "on-scroll": 1, "format": { "today": "<b><u>{}</u></b>" } },
+        "actions": { "on-scroll-up": "shift_up", "on-scroll-down": "shift_down" }
+    },
+    "clock#seconds": {
+        "format": "󰥔 {:%H:%M:%S}",
+        "interval": 1,
+        "format-alt": "󰃭 {:%a %d %b %Y}",
+        "format-alt-click": 2,
+        "on-click": "aether-calendar",
+        "tooltip-format": "<tt>{calendar}</tt>"
+    },
+    "clock#stack": {
+        "format": "{:%a %d %b · %H:%M}",
+        "on-click": "aether-calendar",
+        "tooltip-format": "<tt>{calendar}</tt>"
+    },
+    "cpu#text": { "format": "{usage}% 󰻠", "interval": 5, "states": { "warning": 70, "critical": 90 }, "on-click": "aether-terminal -e btop" },
+    "memory#text": { "format": "{used:0.1f}G 󰍛", "interval": 10, "states": { "warning": 75, "critical": 90 }, "on-click": "aether-terminal -e btop" },
+    "temperature#text": { "format": "{temperatureC}°C ", "critical-threshold": 85, "interval": 10 },
+    "network#speed-text": {
+        "format": "󰇚 {bandwidthDownBytes} 󰕒 {bandwidthUpBytes}",
+        "format-disconnected": "󰤮 offline",
+        "interval": 2,
+        "on-click": "aether-menu wifi"
+    },
+    "custom/fedora": {
+        "format": "",
+        "tooltip-format": "Applications (Super+D)",
+        "on-click": "aether-menu apps",
+        "on-click-right": "aether-menu settings"
+    },
+    "custom/fetch": {
+        "format": "󰍹",
+        "tooltip-format": "System summary (fastfetch)",
+        "on-click": "aether-terminal -e aether-fetch --hold"
+    },
+    "wlr/taskbar": {
+        "format": "{icon}",
+        "icon-size": 26,
+        "tooltip-format": "{title}",
+        "on-click": "activate",
+        "on-click-middle": "close",
+        "ignore-list": ["aether-dropterm"]
+    },
+    "custom/launch-terminal": { "format": "󰆍", "tooltip-format": "Terminal", "on-click": "aether-terminal" },
+    "custom/launch-files": { "format": "󰉋", "tooltip-format": "Files", "on-click": "thunar" },
+    "custom/launch-browser": { "format": "󰈹", "tooltip-format": "Browser", "on-click": "gtk-launch \"$(xdg-settings get default-web-browser)\"" },
+    "custom/launch-apps": { "format": "󰀻", "tooltip-format": "All applications", "on-click": "aether-menu apps" },
+    "group/dock": {
+        "orientation": "horizontal",
+        "modules": ["custom/launch-apps", "custom/launch-terminal", "custom/launch-files", "custom/launch-browser", "wlr/taskbar"]
+    },
+    "custom/dot": { "format": "·", "tooltip": false },
+
+    // ── island (layout "home"): grows into a card while music plays, ──
+    // ── shows volume/brightness levels briefly; a time pill otherwise ──
+    "custom/island-pill": { "exec": "aether-island follow", "return-type": "json", "format": "{}", "on-click": "aether-menu settings", "on-click-right": "swaync-client -t -sw" },
+    "custom/island-osd": { "exec": "aether-island osd", "return-type": "json", "interval": "once", "signal": 12, "format": "{}" },
+    "image#island-art": { "exec": "aether-island art", "size": 52, "interval": 3600, "signal": 12, "on-click": "playerctl play-pause" },
+    "custom/island-title": { "exec": "aether-island title", "return-type": "json", "interval": "once", "signal": 12, "format": "{}" },
+    "custom/island-artist": { "exec": "aether-island artist", "return-type": "json", "interval": "once", "signal": 12, "format": "{}" },
+    "custom/island-prev": { "exec": "aether-island ctl prev", "return-type": "json", "interval": "once", "signal": 12, "format": "{}", "on-click": "playerctl previous" },
+    "custom/island-play": { "exec": "aether-island ctl play", "return-type": "json", "interval": "once", "signal": 12, "format": "{}", "on-click": "playerctl play-pause" },
+    "custom/island-next": { "exec": "aether-island ctl next", "return-type": "json", "interval": "once", "signal": 12, "format": "{}", "on-click": "playerctl next" },
+    "custom/island-ev1": { "exec": "aether-island ev 1", "return-type": "json", "interval": 60, "signal": 12, "format": "{}" },
+    "custom/island-ev2": { "exec": "aether-island ev 2", "return-type": "json", "interval": 60, "signal": 12, "format": "{}" },
+    "group/island-controls": { "orientation": "horizontal", "modules": ["custom/island-prev", "custom/island-play", "custom/island-next"] },
+    "group/island-info": { "orientation": "vertical", "modules": ["custom/island-title", "custom/island-artist", "group/island-controls"] },
+    "group/island-events": { "orientation": "vertical", "modules": ["custom/island-ev1", "custom/island-ev2"] },
+    "group/island": {
+        "orientation": "horizontal",
+        "modules": ["custom/island-pill", "custom/island-osd", "image#island-art", "group/island-info", "group/island-events"]
+    },
+    // Date and time around the Dynamic Island (Settings → Island → Dynamic Island):
+    // in the centre when the island is off, beside the tray when it is on.
+    "custom/island-clock#center": {
+        "exec": "~/.config/waybar/scripts/island-clock.sh center",
+        "return-type": "json",
+        "restart-interval": 5,
+        "on-click": "aether-calendar",
+        "tooltip": true
+    },
+    "custom/island-clock": {
+        "exec": "~/.config/waybar/scripts/island-clock.sh side",
+        "return-type": "json",
+        "restart-interval": 5,
+        "on-click": "aether-calendar",
+        "tooltip": true
+    },
+    "custom/edit-look": { "format": "󱓞", "tooltip-format": "AetherOS Settings (Super+Ctrl+S)\nRight-click: looks", "on-click": "aether-settings", "on-click-right": "aether-look" },
+    "custom/cc": { "format": "󰒓", "tooltip-format": "Control Centre (Super+A)", "on-click": "aether-control", "on-click-right": "aether-settings controls" },
+    "custom/keys": { "format": "󰌌", "tooltip-format": "Keyboard shortcuts (Super+H)", "on-click": "aether-keys" },
+    "custom/launch-apps-top": { "format": "󰀻", "tooltip-format": "Launchpad (Super+Alt+D)", "on-click": "aether-menu launchpad" },
+    "custom/home-add": { "format": "", "tooltip-format": "Pin an app to the dock", "on-click": "aether-dock menu" }
+}

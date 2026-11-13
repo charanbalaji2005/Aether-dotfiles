@@ -7,6 +7,9 @@
 # Options:
 #   --dry-run       print what would be linked / moved aside; change nothing
 #   --keep-zshrc    leave an existing ~/.zshrc that isn't ours untouched
+#   --interface classic|aether
+#                   interface to select when none is chosen yet (default: classic);
+#                   an existing choice is kept — change it with aether-interface set
 #
 # Every link created and every file moved aside is recorded in
 # ~/.local/state/aether/manifest.tsv, which `install.sh --rollback` reads to
@@ -20,13 +23,18 @@ REPO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 BACKUP_SUFFIX=".bak.$(date +%Y%m%d-%H%M%S)"
 DRY_RUN=0
 KEEP_ZSHRC=0
-for arg in "$@"; do
-    case "$arg" in
+INTERFACE=classic
+while [ $# -gt 0 ]; do
+    case "$1" in
         --dry-run) DRY_RUN=1 ;;
         --keep-zshrc) KEEP_ZSHRC=1 ;;
-        *) echo "Unknown option: $arg" >&2; exit 2 ;;
+        --interface) shift; INTERFACE="${1:-}" ;;
+        --interface=*) INTERFACE="${1#--interface=}" ;;
+        *) echo "Unknown option: $1" >&2; exit 2 ;;
     esac
+    shift
 done
+case "$INTERFACE" in classic|aether) ;; *) echo "--interface must be classic or aether" >&2; exit 2 ;; esac
 
 link() {
     local src="$1"
@@ -77,7 +85,18 @@ echo
 
 link "$REPO_DIR/config/hypr" "$HOME/.config/hypr"
 link "$REPO_DIR/config/quickshell/aether-shell" "$HOME/.config/quickshell/aether-shell"
+link "$REPO_DIR/config/quickshell/island" "$HOME/.config/quickshell/island"
 link "$REPO_DIR/config/kitty" "$HOME/.config/kitty"
+# Shells for aether-terminal (zsh is the default; Super+Alt+Return picks one).
+link "$REPO_DIR/config/tmux" "$HOME/.config/tmux"
+# Fedora's ~/.bashrc sources every file in ~/.bashrc.d (link creates it).
+link "$REPO_DIR/config/bash/aether.bash" "$HOME/.bashrc.d/aether.bash"
+# Classic interface (Waybar, Rofi, SwayNC, Wlogout, wallust, fastfetch).
+# Generated colours live outside these directories, in
+# ~/.config/aether-shell/classic, so the repository is never written to.
+for app in waybar rofi swaync wlogout wallust fastfetch; do
+    link "$REPO_DIR/config/$app" "$HOME/.config/$app"
+done
 if [ "$KEEP_ZSHRC" -eq 1 ] && [ -e "$HOME/.zshrc" ] && [[ "$(readlink -f "$HOME/.zshrc" 2>/dev/null || true)" != "$REPO_DIR"/* ]]; then
     echo "Keeping your existing ~/.zshrc (--keep-zshrc). AetherOS's version: $REPO_DIR/config/zsh/.zshrc"
 else
@@ -91,6 +110,10 @@ link "$REPO_DIR/theme/gtk/gtk-4.0/gtk.css" "$HOME/.config/gtk-4.0/gtk.css"
 for unit in "$REPO_DIR"/system/systemd/*.service; do
     [ -f "$unit" ] || continue
     link "$unit" "$HOME/.config/systemd/user/$(basename "$unit")"
+done
+for dropin in "$REPO_DIR"/system/systemd/*.service.d/*.conf; do
+    [ -f "$dropin" ] || continue
+    link "$dropin" "$HOME/.config/systemd/user/$(basename "$(dirname "$dropin")")/$(basename "$dropin")"
 done
 
 [ "$DRY_RUN" -eq 1 ] || mkdir -p "$HOME/.local/bin"
@@ -130,6 +153,36 @@ ensure_fragment "$FRAG_DIR/cursor.conf" "theme cursor --set <theme>"
 ensure_fragment "$FRAG_DIR/input.conf" "input apply"
 ensure_fragment "$FRAG_DIR/displays.conf" "display apply"
 ensure_fragment "$FRAG_DIR/apprules.conf" "workspace rules"
+ensure_fragment "$FRAG_DIR/interface-theme.conf" "interface set classic"
+ensure_fragment "$FRAG_DIR/look.conf" "aether-look apply NAME"
+ensure_fragment "$FRAG_DIR/glass.conf" "aether-glass acrylic"
+if [ "$DRY_RUN" -eq 0 ] && ! grep -qs aether-glass "$FRAG_DIR/glass.conf"; then
+    HOME="$HOME" bash "$REPO_DIR/scripts/bin/aether-glass" init >/dev/null 2>&1 || true
+fi
+
+# The active interface. hyprland.conf sources interface.conf, which must
+# select one, or Hyprland starts with no bar, launcher or menu keys. An
+# existing choice is kept; a missing or placeholder one gets --interface.
+CHOICE="$HOME/.config/aether-shell/interface"
+if [ ! -s "$CHOICE" ] || ! grep -qs "interfaces/" "$FRAG_DIR/interface.conf"; then
+    chosen="$(cat "$CHOICE" 2>/dev/null || true)"
+    case "$chosen" in classic|aether) ;; *) chosen="$INTERFACE" ;; esac
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo "  interface  $chosen (writes $FRAG_DIR/interface.conf)"
+    else
+        [ -e "$FRAG_DIR/interface.conf" ] || manifest_add file "$FRAG_DIR/interface.conf" "-"
+        HOME="$HOME" bash "$REPO_DIR/scripts/bin/aether-interface" set "$chosen" --no-reload --no-services >/dev/null \
+            || echo "WARNING: couldn't select the $chosen interface (run: aether-interface set $chosen)" >&2
+        echo "Interface: $chosen"
+    fi
+fi
+
+# First install: start with the "home" look (top bar, island, dock).
+if [ "$DRY_RUN" -eq 0 ] && [ "$(cat "$CHOICE" 2>/dev/null)" = classic ] \
+    && ! grep -qs '^look=' "$HOME/.config/aether-shell/classic/state.conf"; then
+    HOME="$HOME" bash "$REPO_DIR/scripts/bin/aether-look" apply home >/dev/null 2>&1 \
+        && echo "Look: home (change with Super+Ctrl+L)" || echo "WARNING: couldn't apply the default look (run: aether-look apply home)" >&2
+fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
     echo

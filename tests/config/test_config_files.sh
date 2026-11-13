@@ -96,7 +96,9 @@ if command -v systemd-analyze >/dev/null 2>&1; then
         rm -f "$vt/aether-broken-probe.service"
         unit_ok=1
         for u in "$vt"/*.service; do
-            out="$(systemd-analyze verify "$u" 2>&1)"
+            # Only lines about our units: verify also loads the host's units,
+            # whose own problems (ordering cycles…) are not ours to fail on.
+            out="$(systemd-analyze verify "$u" 2>&1 | grep -i aether || true)"
             if [ -n "$out" ]; then echo "$out"; unit_ok=0; fi
         done
         if [ "$unit_ok" -eq 1 ]; then pass "systemd units verify cleanly (systemd-analyze, system mode)"; else fail "systemd-analyze reported problems"; fi
@@ -126,7 +128,7 @@ for d, _, fs in os.walk(shell):
             t = open(os.path.join(d, f), encoding="utf-8").read()
             for m in re.finditer(r"IpcHandler\s*\{\s*target:\s*\"([a-z]+)\"(.*?)\n    \}", t, re.S):
                 handlers.setdefault(m.group(1), set()).update(re.findall(r"function (\w+)\(", m.group(2)))
-calls = set(re.findall(r"\$shell ([a-z]+) ([a-z]+)", open(os.path.join(repo, "config/hypr/keybinds.conf")).read()))
+calls = set(re.findall(r"\$shell ([a-z]+) ([a-z]+)", open(os.path.join(repo, "config/hypr/interfaces/aether.conf")).read()))
 calls |= set(re.findall(r"ipc call ([a-z]+) ([a-z]+)", open(os.path.join(repo, "scripts/bin/aether")).read()))
 from aether.graphics import hyprconf
 calls |= {tuple(v.split()) for v in hyprconf._SWIPE_IPC.values()}
@@ -140,8 +142,8 @@ then :; else failed=1; fi
 
 # ── IPC targets used by keybinds / CLI exist in the shell ─────────────
 targets="$(grep -rhoE 'target: "[a-z]+"' "$SHELL_DIR" --include=*.qml | sed -E 's/target: "([a-z]+)"/\1/' | sort -u)"
-# shellcheck disable=SC2016 # matching the literal text "$shell" in keybinds.conf
-calls="$( { grep -hoE '\$shell [a-z]+ ' "$REPO_DIR/config/hypr/keybinds.conf"; grep -hoE 'ipc [a-z]+ ' "$REPO_DIR/scripts/bin/aether"; } \
+# shellcheck disable=SC2016 # matching the literal text "$shell" in the aether interface's keybinds
+calls="$( { grep -hoE '\$shell [a-z]+ ' "$REPO_DIR/config/hypr/interfaces/aether.conf"; grep -hoE 'ipc [a-z]+ ' "$REPO_DIR/scripts/bin/aether"; } \
     | awk '{print $2}' | grep -vx call | sort -u)"
 for t in $calls; do
     if echo "$targets" | grep -qx "$t"; then

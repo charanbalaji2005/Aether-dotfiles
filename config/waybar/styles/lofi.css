@@ -1,0 +1,18 @@
+/* Look "Lofi": thin, dark, quiet. Muted text, one warm accent on the clock
+   and the active workspace, a hairline under the bar. */
+@import "_base.css";
+window#waybar {
+    background: alpha(@bg, 0.92);
+    color: @subtext;
+    border-bottom: 1px solid alpha(@fg, 0.08);
+}
+.modules-left > widget > *, .modules-center > widget > *, .modules-right > widget > * {
+    padding: 0 9px;
+    color: @subtext;
+}
+#custom-fedora { color: @accent; font-size: 14px; padding: 0 10px 0 12px; }
+#workspaces button { color: alpha(@text, 0.35); padding: 0 3px; font-size: 10px; }
+#workspaces button.active { color: @accent; }
+#workspaces button.urgent { color: @urgent; }
+#clock { color: @text; font-weight: 700; letter-spacing: 1px; }
+#custom-power { color: @accent; padding-right: 12px; }

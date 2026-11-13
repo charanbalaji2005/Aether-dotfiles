@@ -15,18 +15,29 @@ BuildArch:      noarch
 BuildRequires:  python3
 
 Requires:       hyprland
-Requires:       quickshell >= 0.2.0
 Requires:       python3 >= 3.9
 Requires:       kitty
 Requires:       zsh
 Recommends:     hypridle
+# Classic interface (the default)
+Recommends:     waybar
+Recommends:     (rofi-wayland or rofi)
+Recommends:     SwayNotificationCenter
+Recommends:     hyprlock
+Recommends:     swww
+Recommends:     cliphist
+Recommends:     grim
+Recommends:     slurp
+# The aether (Quickshell) interface
+Suggests:       quickshell >= 0.2.0
 Recommends:     pciutils
 Recommends:     hwdata
 Recommends:     libsecret
 Recommends:     power-profiles-daemon
 
 %description
-AetherOS dotfiles: Hyprland configuration, the AetherOS Shell (Quickshell),
+AetherOS dotfiles: Hyprland configuration with two interfaces — "classic"
+(Waybar, Rofi, SwayNC, Wlogout, Hyprlock, swww) and the AetherOS Shell (Quickshell),
 terminal and shell configuration, install/backup/restore scripts, and
 package lists.
 

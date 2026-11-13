@@ -1,0 +1,8 @@
+/* AetherOS classic — keybinding reference: wide, monospaced alignment. */
+@import "base.rasi"
+window { width: 900px; }
+mainbox { children: [ inputbar, listview ]; }
+listview { lines: 16; }
+element { padding: 5px 12px; }
+element-icon { size: 0; }
+entry { placeholder: "Filter keys or actions…"; }

@@ -3,6 +3,92 @@
 Dates reflect when each phase was built, not calendar releases — this hasn't been tagged/released
 yet (see top-level `PROGRESS.md` for current status before treating anything below as "shipped").
 
+## Unreleased — classic interface
+
+### Added
+- **Classic interface** (now the default; `aether-interface set aether` restores the Quickshell
+  shell): Waybar (7 layouts, 4 styles), Rofi launcher and menus (Wi-Fi, Bluetooth, audio,
+  clipboard, emoji, calculator, web search, keybinding reference, theme, quick settings),
+  SwayNC control centre, Wlogout with original icons (Rofi fallback), Hyprlock, Hypridle
+  (suspend only on battery), swww wallpapers with previews, per-monitor wallpapers, slideshow
+  and video wallpapers (still frame on battery), Pyprland drop-down terminal and zoom,
+  screenshots with annotation, OSD for volume/brightness, night light, game mode, keep-awake,
+  airplane mode.
+- `aether-colors`: one palette for every app from wallust, the wallpaper (built-in) or six
+  presets, with enforced contrast and automatic fallback.
+- `aether-interface` (status / set / doctor), `install.sh --interface`, `--no-fonts`;
+  checksum-pinned Nerd Font installer (`scripts/install-fonts.sh`).
+- Package lists accept alternatives (`rofi-wayland|rofi`).
+- Tests: `tests/classic/` (real GTK 3 and Rofi parsers, layouts, configs, isolated-home
+  lifecycle) and `tests/python/test_classic_colors.py`; installer test now covers an existing
+  Waybar config being preserved and restored, and alternative package selection.
+
+- **Looks** (`aether-look`, Super+Ctrl+L): lofi, frost, desk, orbit, retro, pixel, blocks and
+  default — bar layout + style + launcher + palette + gaps/rounding in one step; 7 new Waybar
+  layouts and styles (incl. bottom docks with `wlr/taskbar`), 3 new launchers (grid, side,
+  strip), 3 new palettes (lagoon, slate, synth); presets can name their accent colour;
+  `aether-fetch` (fastfetch with the wallpaper as its picture).
+
+- **Identity looks** anime (new default), cyber, glass, emerald, retrowave, devpro; palettes
+  dusk, neon, emerald; Waybar styles anime and cyber.
+- **Lock screen designs** (`aether-lock`): signature, anime, minimal, typography, cyber, glass,
+  retro; each look sets one.
+- **Wallpaper gallery**: title, search, favourites, recent first, sub-folder categories,
+  slideshow key.
+- `aether-bindings list|search|check`; Super+Ctrl+P visual profile menu.
+
+- **Home look** (new default): top bar, an island that expands on hover with now-playing art,
+  title and controls (event-driven MPRIS), and a macOS-style dock with real app icons
+  (`aether-dock`) and a full-screen **Launchpad** (Super+Alt+D) that pops in (Hyprland layer
+  animation). **Mono** look and palette. Lock designs **stacked** and **island**.
+
+- **Island** now sizes itself: time pill → music card (rounded art, title, artist, controls,
+  upcoming events from khal/calcurse or the date) → volume/brightness level bar for 2 s.
+- **AetherOS Settings** window (`aether-settings`, Super+Ctrl+S): looks, appearance, bar,
+  island, dock, lock screen, wallpaper, keyboard shortcuts, system — wired to the helpers;
+  modern design: profile header, searchable sidebar with coloured tiles, grouped cards,
+  palette strips on looks, toast results.
+- Dock: more first-run apps (browser, files, terminal, editor, chat, music, notes, calendar,
+  monitor, graphics — each only if installed).
+
+- Island shows **only while useful** (music, volume/brightness) as its own Waybar, so it no
+  longer covers windows; setting "Only show while something is happening".
+- Dock shows **running apps** (with their icons) beside the pins; Launchpad has **Apps / Open
+  windows** tabs and reports errors instead of silently doing nothing (its `fullscreen` theme
+  property didn't work on Rofi's Wayland build).
+- Home top bar redesigned: one floating glass strip, animated workspace pills, shortcuts and
+  Launchpad buttons. Bars slide in, the launcher pops in (Hyprland layer animations).
+- **aether-keys** (Super+H): keyboard-shortcut window with key caps by category, searchable.
+
+- `tools/preview-lockscreen.py`: preview any lock design without locking; island design's
+  clock/date spacing and avatar fixed after previewing.
+
+- **Control Centre** (Super+A): frosted-glass panel with 22 real controls (layer-shell, blurred),
+  and an editor in Settings with a control gallery, Add/Remove/reorder and live preview.
+- Control Centre redesigned like a phone control centre (connectivity card, coloured toggles,
+  tall fill sliders, round buttons, album art).
+- **Frosted glass by default** (`aether-glass`, acrylic): stronger blur, translucent windows
+  (opaque exceptions for browsers, video, games, editors), translucent Rofi/SwayNC/bar/panels.
+
+### Changed
+- Keybinds split into shared keys and per-interface files (`config/hypr/interfaces/`).
+- RPM/PKGBUILD: Quickshell is optional (Suggests/optdepends) instead of required.
+- `aether` session commands (launcher, lock, reload…) and `aether repair` follow the active interface.
+
+### Fixed
+- Wallpaper picker listed only favourites when there was no history yet (a failing `tac` under
+  `set -e -o pipefail` ended the list) — found by rendering it; the test now runs the script
+  with its real error settings and was confirmed to fail on the old code.
+- Wallpaper picker keys Alt+F/Alt+S collided with Rofi's own bindings (Rofi showed an error
+  instead of the gallery); now Alt+V/Alt+C/Alt+P, with a test against Rofi's defaults.
+- Rofi launcher: the "AetherOS" banner and sidebar never rendered (custom containers need a
+  `box-` name and textboxes take `content`, not `str`) — found by rendering it with real Rofi.
+- Default Waybar workspaces drew blank buttons; plain dots are used now.
+- `exec-once = hyprpolkitagent` never started the agent on Fedora (it is in /usr/libexec);
+  the systemd unit is used, with the libexec path as fallback.
+- The QML runtime suite loaded fixture images from /tmp that nothing created (it only passed
+  where they were left over); the harness now generates them.
+
 ## 1.0.0-rc.2 — 2026-11-11
 
 Release hardening — no new features. Status: **ready for private testing**; publisher identity

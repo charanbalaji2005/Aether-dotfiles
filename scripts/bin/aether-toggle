@@ -1,0 +1,86 @@
+#!/usr/bin/bash
+# aether-toggle — quick toggles of the AetherOS classic interface.
+#
+#   aether-toggle nightlight [on|off]   warm screen at night (hyprsunset, 4500 K)
+#   aether-toggle gamemode   [on|off]   no animations, blur, shadows or gaps (Hyprland)
+#   aether-toggle dnd        [on|off]   SwayNC do-not-disturb
+#   aether-toggle idle       [on|off]   keep awake: stop hypridle from dimming/locking
+#   aether-toggle airplane   [on|off]   block every radio (rfkill)
+#   aether-toggle status <name>         print on/off
+#   aether-toggle waybar-json <name>    status as JSON for a Waybar custom module
+
+set -euo pipefail
+# shellcheck source=SCRIPTDIR/../lib/classic.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/classic.sh"
+
+status() {
+    case "$1" in
+        nightlight) pgrep -x hyprsunset >/dev/null 2>&1 && echo on || echo off ;;
+        gamemode)
+            if in_hyprland && [ "$(hyprctl getoption animations:enabled -j 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("int", 1))' 2>/dev/null || echo 1)" = 0 ]; then echo on; else echo off; fi ;;
+        dnd) [ "$(swaync-client --get-dnd 2>/dev/null || echo false)" = true ] && echo on || echo off ;;
+        idle) pgrep -x hypridle >/dev/null 2>&1 && echo off || echo on ;;
+        airplane)
+            if have rfkill && [ -n "$(rfkill -rno SOFT 2>/dev/null)" ] && ! rfkill -rno SOFT 2>/dev/null | grep -q unblocked; then echo on; else echo off; fi ;;
+        *) echo "unknown toggle: $1" >&2; return 2 ;;
+    esac
+}
+
+want() {  # want <name> <on|off|""> -> on/off to switch to
+    case "$2" in on|off) echo "$2" ;; "") [ "$(status "$1")" = on ] && echo off || echo on ;; *) echo "use on or off" >&2; exit 2 ;; esac
+}
+
+nightlight() {
+    if [ "$1" = on ]; then
+        need hyprsunset hyprsunset
+        pgrep -x hyprsunset >/dev/null || setsid -f hyprsunset -t "$(cstate_get nightlight_temp 4500)" >/dev/null 2>&1
+        notify "Night light on" "$(cstate_get nightlight_temp 4500) K" weather-clear-night -e -u low
+    else
+        pkill -x hyprsunset 2>/dev/null || true
+        notify "Night light off" "" weather-clear -e -u low
+    fi
+    cstate_set nightlight "$1"
+}
+
+gamemode() {
+    in_hyprland || { echo "gamemode needs a running Hyprland session" >&2; return 1; }
+    if [ "$1" = on ]; then
+        hyprctl --batch "keyword animations:enabled 0; keyword decoration:shadow:enabled 0; keyword decoration:blur:enabled 0; keyword general:gaps_in 0; keyword general:gaps_out 0; keyword general:border_size 1; keyword decoration:rounding 0" >/dev/null
+        notify "Game mode on" "Animations, blur, shadows and gaps are off" applications-games -e -u low
+    else
+        hyprctl reload >/dev/null
+        notify "Game mode off" "Effects restored" applications-games -e -u low
+    fi
+}
+
+dnd() {
+    need swaync-client SwayNotificationCenter
+    if [ "$1" = on ]; then swaync-client --dnd-on >/dev/null; else swaync-client --dnd-off >/dev/null; notify "Do not disturb off" "" notifications -e -u low; fi
+}
+
+idle() {
+    if [ "$1" = on ]; then
+        pkill -x hypridle 2>/dev/null || true
+        notify "Keep awake on" "The screen won't dim, lock or turn off" caffeine-cup-full -e -u low
+    else
+        need hypridle hypridle
+        pgrep -x hypridle >/dev/null || setsid -f hypridle >/dev/null 2>&1
+        notify "Keep awake off" "Idle dimming and locking are back" caffeine-cup-empty -e -u low
+    fi
+    cstate_set idle_inhibit "$1"
+}
+
+airplane() {
+    need rfkill util-linux
+    if [ "$1" = on ]; then rfkill block all; notify "Airplane mode on" "All radios are off" airplane-mode -e
+    else rfkill unblock all; notify "Airplane mode off" "" network-wireless -e; fi
+}
+
+case "${1:-}" in
+    nightlight|gamemode|dnd|idle|airplane) "$1" "$(want "$1" "${2:-}")" ;;
+    status) status "${2:?name}" ;;
+    waybar-json)
+        s="$(status "${2:?name}")"
+        printf '{"text": "%s", "alt": "%s", "class": "%s", "tooltip": "%s: %s"}\n' "$s" "$s" "$s" "$2" "$s" ;;
+    *) sed -n '2,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

@@ -1,0 +1,136 @@
+/* Look "Home": thin glass top bar, a black island pill that grows on hover,
+   and a frosted dock with real app icons. */
+@import "_base.css";
+
+/* ── top bar: one floating glass strip, grouped capsules, animated workspaces ── */
+window#waybar.home-top {
+    background: @glass_bg;
+    border: 1px solid alpha(@fg, 0.10);
+    border-radius: 16px;
+    color: @text;
+}
+window#waybar.home-top .modules-left, window#waybar.home-top .modules-right { padding: 0 6px; }
+window#waybar.home-top .modules-left > widget > *,
+window#waybar.home-top .modules-right > widget > * {
+    color: @subtext;
+    padding: 0 9px;
+    margin: 5px 1px;
+    border-radius: 10px;
+    transition: background-color 180ms ease, color 180ms ease;
+}
+window#waybar.home-top .modules-left > widget > *:hover,
+window#waybar.home-top .modules-right > widget > *:hover { background: alpha(@fg, 0.10); color: @text; }
+#custom-edit-look {
+    background: linear-gradient(135deg, @accent, @accent2);
+    color: @on_accent;
+    font-size: 14px;
+    padding: 0 10px;
+}
+#custom-launch-apps-top { color: @accent; font-size: 14px; }
+#workspaces { padding: 0 3px; }
+#workspaces button {
+    color: @muted;
+    min-width: 22px;
+    padding: 0 4px;
+    margin: 4px 1px;
+    border-radius: 8px;
+    transition: min-width 260ms cubic-bezier(0.2, 0.9, 0.3, 1), background-color 200ms ease, color 200ms ease;
+}
+#workspaces button.active { background: @accent; color: @on_accent; min-width: 40px; }
+#workspaces button.empty { color: alpha(@muted, 0.55); }
+#workspaces button:hover { background: alpha(@accent, 0.22); color: @text; }
+#window { color: @text; font-weight: 600; }
+window#waybar.home-top.empty #window { color: @muted; }
+#clock {
+    color: @text;
+    font-weight: 800;
+    background: alpha(@fg, 0.07);
+    border-radius: 10px;
+    padding: 0 14px;
+    margin: 5px 0;
+}
+#clock:hover { background: alpha(@fg, 0.14); }
+#custom-weather {
+    color: @subtext;
+    font-weight: 700;
+    background: alpha(@fg, 0.05);
+    border-radius: 10px;
+    padding: 0 12px;
+    margin: 5px 0 5px 6px;
+}
+#custom-weather:hover { background: alpha(@fg, 0.12); color: @text; }
+#custom-weather.stale { color: @muted; }
+#hardware > * { padding: 0 5px; margin: 0; }
+#cpu.warning, #memory.warning, #battery.warning { color: @warn; }
+#cpu.critical, #memory.critical, #battery.critical { color: @urgent; }
+#battery.charging { color: @ok; }
+#pulseaudio.muted, #network.disconnected { color: @muted; }
+/* macOS-style menu extras: one monochrome tone, colour only for warnings */
+#custom-keys, #custom-power, #custom-cc, #custom-notification, #custom-nightlight,
+#bluetooth, #network, #pulseaudio, #battery { color: @subtext; }
+#custom-nightlight.on { color: @warn; }
+#pulseaudio.source-muted { color: @muted; }
+#custom-island-clock { color: @text; font-weight: 700; padding: 0 10px; }
+#custom-island-clock.center { font-weight: 800; padding: 0 14px; border-radius: 10px; }
+#custom-island-clock.center:hover { background: alpha(@fg, 0.10); }
+#custom-island-clock.hidden { padding: 0; margin: 0; min-width: 0; }
+#tray.empty { padding: 0; margin: 0; }
+
+/* ── island (Waybar fallback; the default island is Quickshell) ───────── */
+window#waybar.home-island { background: transparent; }
+#island {
+    background: rgba(8, 8, 10, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 24px;
+    padding: 4px 10px;
+    margin: 0 0 10px 0;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5);
+}
+#island * { color: #f4f4f6; }
+#custom-island-pill { font-weight: 700; font-size: 13px; padding: 1px 18px; }
+#custom-island-osd { font-size: 14px; padding: 4px 14px; color: @accent; }
+#image.island-art { margin: 2px 10px 2px 2px; }
+#island-info { margin-right: 14px; }
+#custom-island-title { font-weight: 800; font-size: 13px; }
+#custom-island-artist { color: rgba(244, 244, 246, 0.6); font-size: 10px; margin-bottom: 2px; }
+#island-controls { margin-top: 2px; }
+#custom-island-prev, #custom-island-play, #custom-island-next { font-size: 16px; padding: 0 9px; border-radius: 10px; }
+#custom-island-play { font-size: 19px; }
+#custom-island-prev:hover, #custom-island-play:hover, #custom-island-next:hover { background: rgba(255, 255, 255, 0.10); }
+#island-events { padding-left: 4px; }
+#custom-island-ev1, #custom-island-ev2 { font-size: 11px; padding: 3px 10px; margin: 3px 0; }
+#custom-island-ev1 { border-left: 3px solid @urgent; font-weight: 700; }
+#custom-island-ev2 { border-left: 3px solid @accent; color: rgba(244, 244, 246, 0.75); }
+
+/* ── dock: one frosted capsule holding pins, running apps and Launchpad ── */
+window#waybar.home-dock { background: transparent; }
+window#waybar.home-dock .modules-center {
+    background: @glass_surface;
+    border: 1px solid alpha(@fg, 0.14);
+    border-radius: 20px;
+    padding: 4px 8px;
+    margin: 2px 0;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+}
+#dock-pins > *, #taskbar.dock button {
+    padding: 2px 6px;
+    margin: 0 1px;
+    border-radius: 12px;
+    border-bottom: 2px solid transparent;
+    transition: background-color 160ms ease, border-color 160ms ease;
+}
+#dock-pins > *:hover, #taskbar.dock button:hover { background: alpha(@fg, 0.16); }
+#taskbar.dock { margin-left: 6px; padding-left: 6px; border-left: 1px solid alpha(@fg, 0.18); }
+#taskbar.dock.empty { margin: 0; padding: 0; border: none; }
+#taskbar.dock button.active { border-bottom: 2px solid @accent; background: alpha(@fg, 0.08); }
+#custom-launchpad {
+    font-size: 26px;
+    color: @text;
+    padding: 0 12px 0 14px;
+    margin-left: 6px;
+    border-left: 1px solid alpha(@fg, 0.18);
+    border-radius: 0 14px 14px 0;
+    transition: color 160ms ease;
+}
+#custom-launchpad:hover { color: @accent; }
+#custom-dock-hint { color: @subtext; padding: 0 10px; }

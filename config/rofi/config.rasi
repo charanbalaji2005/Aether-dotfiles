@@ -1,0 +1,34 @@
+/* AetherOS classic — Rofi configuration. Menus are opened by aether-menu,
+   which picks a theme from themes/ for each one. */
+configuration {
+    modi: "drun,run,window,filebrowser";
+    show-icons: true;
+    icon-theme: "Papirus-Dark";
+    terminal: "aether-terminal";
+    font: "JetBrainsMono Nerd Font 11";
+    drun-display-format: "{name}";
+    display-drun: "Apps";
+    display-run: "Run";
+    display-window: "Windows";
+    display-filebrowser: "Files";
+    window-format: "{w} · {c} · {t}";
+    disable-history: false;
+    sort: true;
+    sorting-method: "fzf";
+    matching: "fuzzy";
+    case-sensitive: false;
+    hover-select: true;
+    me-select-entry: "";
+    me-accept-entry: "MousePrimary";
+    scroll-method: 0;
+    steal-focus: true;
+    filebrowser {
+        directories-first: true;
+        sorting-method: "name";
+    }
+    timeout {
+        action: "kb-cancel";
+        delay: 0;
+    }
+}
+@theme "~/.config/rofi/themes/aether.rasi"

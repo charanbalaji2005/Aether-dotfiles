@@ -1,0 +1,23 @@
+/* AetherOS classic — "grid" launcher: a search field on top, large app icons
+   in a grid, and the modes as buttons along the bottom. */
+@import "base.rasi"
+window {
+    width: 640px;
+    border-radius: 22px;
+    background-color: @bg-glass;
+}
+mainbox { padding: 18px; spacing: 16px; children: [ inputbar, listview, mode-switcher ]; }
+inputbar { border-radius: 14px; padding: 12px 16px; children: [ entry ]; }
+entry { placeholder: "Search…"; }
+listview { columns: 5; lines: 3; spacing: 10px; flow: horizontal; fixed-columns: true; }
+element {
+    orientation: vertical;
+    padding: 14px 6px 10px 6px;
+    spacing: 8px;
+    border-radius: 16px;
+}
+element selected.normal { background-color: @bg-sel; text-color: @fg; }
+element-icon { size: 46px; horizontal-align: 0.5; }
+element-text { horizontal-align: 0.5; font: "JetBrainsMono Nerd Font 9"; }
+mode-switcher { spacing: 10px; }
+button { padding: 10px; border-radius: 12px; horizontal-align: 0.5; }

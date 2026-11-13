@@ -1,0 +1,3 @@
+// Used only when Waybar is started by hand without -c. AetherOS starts it
+// through `aether-waybar start`, which passes the chosen layout instead.
+{ "include": ["~/.config/waybar/layouts/default.jsonc"] }

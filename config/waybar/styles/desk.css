@@ -1,0 +1,36 @@
+/* Look "Desk": a desktop-style menu bar on top and a rounded, centred dock
+   at the bottom (window#waybar.desk-dock). */
+@import "_base.css";
+window#waybar.desk-top {
+    background: alpha(@bg, 0.78);
+    color: @text;
+    border-bottom: 1px solid alpha(@fg, 0.06);
+}
+window#waybar.desk-top .modules-left > widget > *,
+window#waybar.desk-top .modules-center > widget > *,
+window#waybar.desk-top .modules-right > widget > * { padding: 0 9px; color: @text; }
+#custom-fedora { font-size: 15px; padding: 0 12px; }
+#window { font-weight: 700; }
+#workspaces button { color: @muted; padding: 0 6px; }
+#workspaces button.active { color: @accent; }
+
+window#waybar.desk-dock { background: transparent; }
+#dock {
+    background: alpha(@surface, 0.80);
+    border: 1px solid alpha(@fg, 0.12);
+    border-radius: 18px;
+    padding: 4px 10px;
+}
+#custom-launch-apps, #custom-launch-terminal, #custom-launch-files, #custom-launch-browser {
+    font-size: 26px;
+    color: @accent;
+    padding: 2px 14px;
+    border-radius: 12px;
+}
+#custom-launch-apps:hover, #custom-launch-terminal:hover, #custom-launch-files:hover, #custom-launch-browser:hover {
+    background: alpha(@fg, 0.10);
+}
+#taskbar { margin-left: 6px; border-left: 1px solid alpha(@fg, 0.15); padding-left: 6px; }
+#taskbar button { padding: 4px 8px; border-radius: 12px; border-bottom: 2px solid transparent; }
+#taskbar button.active { border-bottom: 2px solid @accent; background: alpha(@fg, 0.08); }
+#taskbar button:hover { background: alpha(@fg, 0.12); }

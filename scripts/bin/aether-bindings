@@ -1,0 +1,11 @@
+#!/usr/bin/bash
+# aether-bindings — list, search and check the Hyprland keybindings.
+# The work is done by lib/aether/bindings.py (standard library only);
+# run `aether-bindings --help` for the commands.
+set -euo pipefail
+LIB="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../lib" && pwd)"
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "aether-bindings: python3 is required (sudo dnf install python3)" >&2
+    exit 1
+fi
+exec python3 -I -c 'import sys; sys.path.insert(0, sys.argv.pop(1)); from aether.bindings import main; sys.exit(main(sys.argv[1:]))' "$LIB" "$@"

@@ -1,0 +1,45 @@
+/* Look "Orbit": no bar at all — the wallpaper fills the screen. A floating
+   pill of workspace numbers (active one widened), and a small dock pill. */
+@import "_base.css";
+window#waybar { background: transparent; }
+window#waybar.orbit-top .modules-left > widget > *,
+window#waybar.orbit-top .modules-right > widget > * {
+    background: alpha(@bg, 0.70);
+    color: @text;
+    border-radius: 14px;
+    padding: 0 11px;
+    margin: 2px 2px;
+}
+#workspaces {
+    background: alpha(@bg, 0.70);
+    border-radius: 16px;
+    padding: 0 4px;
+    margin: 2px 0;
+}
+#workspaces button {
+    color: @text;
+    background: alpha(@fg, 0.12);
+    border-radius: 100px;
+    min-width: 20px;
+    padding: 0 4px;
+    margin: 4px 2px;
+    font-size: 11px;
+    transition: all 250ms ease;
+}
+#workspaces button.active { background: @accent; color: @on_accent; min-width: 44px; }
+#workspaces button.empty { color: @muted; }
+#workspaces button:hover { background: alpha(@accent, 0.5); }
+
+window#waybar.orbit-dock { background: transparent; }
+#dock {
+    background: alpha(@bg, 0.75);
+    border: 1px solid alpha(@accent, 0.45);
+    border-radius: 14px;
+    padding: 3px 8px;
+}
+#custom-launch-apps, #custom-launch-terminal, #custom-launch-files, #custom-launch-browser {
+    font-size: 18px; color: @accent; padding: 0 9px; border-radius: 10px;
+}
+#custom-launch-apps:hover, #custom-launch-terminal:hover, #custom-launch-files:hover, #custom-launch-browser:hover { background: alpha(@fg, 0.12); }
+#taskbar button { padding: 2px 5px; border-radius: 10px; }
+#taskbar button.active { background: alpha(@accent, 0.30); }

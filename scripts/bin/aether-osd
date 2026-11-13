@@ -1,0 +1,124 @@
+#!/usr/bin/bash
+# aether-osd — volume, microphone and brightness keys for the classic interface.
+# Changes the level and shows it as a SwayNC progress notification that
+# replaces itself (no stack of popups).
+#
+#   aether-osd volume up|down|mute|get   (5% steps, capped at 100%)
+#   aether-osd mic up|down|mute|get
+#   aether-osd brightness up|down|get    (5% steps, never below 1%)
+#   aether-osd kbd up|down               keyboard backlight, when present
+#
+# Audio uses wpctl (WirePlumber); pamixer is used only if wpctl is missing.
+
+set -euo pipefail
+# shellcheck source=SCRIPTDIR/../lib/classic.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/classic.sh"
+
+STEP="${AETHER_OSD_STEP:-5}"
+
+osd() {  # osd <tag> <title> <value 0-100> <icon> [body]
+    # The island (look "home") shows the level itself; otherwise a SwayNC popup.
+    if pgrep -x waybar >/dev/null 2>&1 && [ "$(cstate_get look)" = home ] && [ "$(cstate_get island_osd on)" = on ]; then
+        local g
+        case "$4" in
+            audio-volume-muted|microphone-sensitivity-muted) g="󰝟" ;;
+            audio-volume-low) g="󰕿" ;; audio-volume-medium) g="󰖀" ;; audio-volume-high) g="󰕾" ;;
+            audio-input-microphone) g="󰍬" ;; display-brightness) g="󰃠" ;; input-keyboard) g="󰌌" ;; *) g="󰕾" ;;
+        esac
+        aether-island show-osd "$g" "$3" "$2"
+        return 0
+    fi
+    have notify-send || return 0
+    notify-send -a AetherOS -e -u low -i "$4" \
+        -h "string:x-canonical-private-synchronous:aether-osd-$1" \
+        -h "int:value:$3" -h "string:synchronous:aether-osd-$1" \
+        "$2" "${5:-$3%}" 2>/dev/null || true
+}
+
+# ── audio ───────────────────────────────────────────────────────────────
+audio_get() {  # audio_get SINK|SOURCE -> "<percent> <muted 0/1>"
+    if have wpctl; then
+        wpctl get-volume "@DEFAULT_AUDIO_$1@" 2>/dev/null | awk '{ printf "%d %d\n", $2 * 100 + 0.5, /MUTED/ ? 1 : 0 }'
+    elif have pamixer; then
+        local flag=""; [ "$1" = SOURCE ] && flag="--default-source"
+        # shellcheck disable=SC2086 # empty flag must vanish
+        printf '%s %s\n' "$(pamixer $flag --get-volume)" "$([ "$(pamixer $flag --get-mute)" = true ] && echo 1 || echo 0)"
+    else
+        echo "audio: neither wpctl nor pamixer is installed" >&2; return 1
+    fi
+}
+
+audio_change() {  # audio_change SINK|SOURCE up|down|mute
+    if have wpctl; then
+        case "$2" in
+            up) wpctl set-mute "@DEFAULT_AUDIO_$1@" 0; wpctl set-volume -l 1.0 "@DEFAULT_AUDIO_$1@" "${STEP}%+" ;;
+            down) wpctl set-volume "@DEFAULT_AUDIO_$1@" "${STEP}%-" ;;
+            mute) wpctl set-mute "@DEFAULT_AUDIO_$1@" toggle ;;
+        esac
+    else
+        need pamixer pamixer
+        local flag=""; [ "$1" = SOURCE ] && flag="--default-source"
+        # shellcheck disable=SC2086
+        case "$2" in
+            up) pamixer $flag -u -i "$STEP" --set-limit 100 ;;
+            down) pamixer $flag -d "$STEP" ;;
+            mute) pamixer $flag -t ;;
+        esac
+    fi
+}
+
+audio_show() {  # audio_show SINK|SOURCE
+    local vol muted icon title
+    read -r vol muted < <(audio_get "$1")
+    if [ "$1" = SINK ]; then
+        title="Volume"
+        if [ "$muted" = 1 ] || [ "$vol" -eq 0 ]; then icon=audio-volume-muted
+        elif [ "$vol" -lt 34 ]; then icon=audio-volume-low
+        elif [ "$vol" -lt 67 ]; then icon=audio-volume-medium
+        else icon=audio-volume-high; fi
+    else
+        title="Microphone"
+        if [ "$muted" = 1 ]; then icon=microphone-sensitivity-muted; else icon=audio-input-microphone; fi
+    fi
+    if [ "$muted" = 1 ]; then osd "$1" "$title" 0 "$icon" "Muted"; else osd "$1" "$title" "$vol" "$icon"; fi
+}
+
+# ── backlight ───────────────────────────────────────────────────────────
+bright() {  # bright DEVICE-CLASS up|down|get
+    need brightnessctl brightnessctl
+    local cls="$1" dev=() pct
+    if [ "$cls" = kbd ]; then
+        local d; d="$(brightnessctl -l -c leds -m 2>/dev/null | cut -d, -f1 | grep -m1 -i kbd || true)"
+        [ -n "$d" ] || { notify "Keyboard backlight" "No keyboard backlight found" input-keyboard -e; return 0; }
+        dev=(-d "$d")
+    else
+        [ -n "$(brightnessctl -l -c backlight -m 2>/dev/null)" ] || { notify "Brightness" "No adjustable backlight (external monitors need ddcutil)" display-brightness -e; return 0; }
+        dev=(-c backlight)
+    fi
+    case "$2" in
+        up) brightnessctl -q "${dev[@]}" set "${STEP}%+" ;;
+        down)
+            if [ "$cls" = kbd ]; then brightnessctl -q "${dev[@]}" set "${STEP}%-"
+            else brightnessctl -q "${dev[@]}" --min-value=1 set "${STEP}%-"; fi ;;
+        get) ;;
+        *) echo "use up, down or get" >&2; return 2 ;;
+    esac
+    pct="$(brightnessctl "${dev[@]}" -m | cut -d, -f4 | tr -d '%')"
+    [ "$2" = get ] && { echo "$pct"; return 0; }
+    if [ "$cls" = kbd ]; then osd kbd "Keyboard backlight" "$pct" input-keyboard
+    else osd bright "Brightness" "$pct" display-brightness; fi
+}
+
+what="${1:-}"; action="${2:-}"
+case "$what" in
+    volume|mic)
+        target=SINK; [ "$what" = mic ] && target=SOURCE
+        case "$action" in
+            up|down|mute) audio_change "$target" "$action"; audio_show "$target" ;;
+            get) audio_get "$target" ;;
+            *) echo "usage: aether-osd $what up|down|mute|get" >&2; exit 2 ;;
+        esac ;;
+    brightness) bright backlight "$action" ;;
+    kbd) bright kbd "$action" ;;
+    *) sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac

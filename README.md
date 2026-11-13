@@ -1,6 +1,12 @@
 # AetherOS
 
-**A complete, GPU-aware Hyprland desktop for Fedora.** An original shell built on
+**A complete, GPU-aware Hyprland desktop for Fedora**, with two interfaces:
+
+- **classic** (default) — Waybar, Rofi, SwayNC, Wlogout, Hyprlock/Hypridle, swww, wallust and
+  Pyprland, driven by AetherOS's own scripts: wallpaper-based colours for every app, Rofi menus
+  for Wi-Fi, Bluetooth, audio, clipboard, emoji, calculator and settings, 14 bar layouts, 11
+  styles, and 8 one-step **looks** (Super+Ctrl+L). Guide: [docs/CLASSIC_INTERFACE.md](docs/CLASSIC_INTERFACE.md).
+- **aether** — an original shell built on
 Quickshell/QML with its own animation and graphics engine, a hardware-aware backend, an
 optional local-first assistant, and an installer that can check, preview, install, update,
 uninstall and roll back.
@@ -19,7 +25,10 @@ git clone https://github.com/OWNER/aetheros-dotfiles ~/aetheros-dotfiles && cd ~
 ./install.sh --check      # read-only preflight
 ./install.sh --dry-run    # everything it would do
 ./install.sh              # install (asks before packages; never replaces ~/.zshrc without a yes)
+./install.sh --interface aether   # the Quickshell shell instead of the classic interface
 ```
+
+Switch any time: `aether-interface set classic|aether`. After login: `SUPER + H` lists every key.
 
 Undo at any time with `./install.sh --rollback`. Details: [INSTALLATION.md](INSTALLATION.md).
 

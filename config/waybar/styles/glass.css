@@ -1,0 +1,41 @@
+/* AetherOS classic — "glass": one translucent rounded panel; Hyprland blurs it
+   (layer rule for the "waybar" namespace). */
+* {
+    font-family: "JetBrainsMono Nerd Font", "JetBrains Mono", sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    min-height: 0;
+    border: none;
+    border-radius: 0;
+}
+window#waybar {
+    background: alpha(@bg, 0.55);
+    border: 1px solid alpha(@fg, 0.12);
+    border-radius: 16px;
+    color: @text;
+}
+tooltip { background: alpha(@bg, 0.9); border: 1px solid alpha(@fg, 0.15); border-radius: 12px; }
+tooltip label { color: @text; }
+.modules-left, .modules-center, .modules-right { padding: 0 6px; }
+.modules-left > widget > *, .modules-center > widget > *, .modules-right > widget > * {
+    padding: 0 9px;
+    margin: 4px 1px;
+    border-radius: 10px;
+    color: @text;
+}
+#custom-menu { color: @accent; font-size: 17px; }
+#workspaces button { color: alpha(@text, 0.45); padding: 0 6px; border-radius: 10px; background: transparent; }
+#workspaces button.active { color: @text; background: alpha(@accent, 0.35); padding: 0 12px; }
+#workspaces button.urgent { color: @urgent; }
+#workspaces button:hover { background: alpha(@fg, 0.08); box-shadow: none; }
+#hardware > *, #quick > * { margin: 0; padding: 0 5px; }
+#window { color: @subtext; }
+#clock { font-weight: 800; }
+#clock:hover, #network:hover, #pulseaudio:hover, #bluetooth:hover, #battery:hover { background: alpha(@fg, 0.08); }
+#cpu.warning, #memory.warning, #battery.warning { color: @warn; }
+#cpu.critical, #memory.critical, #temperature.critical, #battery.critical { color: @urgent; }
+#battery.charging { color: @ok; }
+#pulseaudio.muted, #network.disconnected, #bluetooth.off { color: @muted; }
+#idle_inhibitor.activated, #custom-gamemode.on, #custom-nightlight.on { color: @warn; }
+#custom-power { color: @urgent; }
+#tray menu { background: @bg; color: @text; border-radius: 10px; }

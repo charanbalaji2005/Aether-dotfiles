@@ -1,0 +1,31 @@
+// AetherOS classic — "dual": a top bar for windows and status, a bottom bar for system and media.
+[
+    {
+        "include": ["~/.config/waybar/modules.jsonc"],
+        "name": "top",
+        "layer": "top",
+        "position": "top",
+        "height": 31,
+        "margin-top": 6,
+        "margin-left": 10,
+        "margin-right": 10,
+        "spacing": 6,
+        "modules-left": ["custom/menu", "hyprland/workspaces", "hyprland/window"],
+        "modules-center": ["clock", "custom/weather"],
+        "modules-right": ["tray", "network", "bluetooth", "pulseaudio", "battery", "custom/notification", "custom/power"]
+    },
+    {
+        "include": ["~/.config/waybar/modules.jsonc"],
+        "name": "bottom",
+        "layer": "top",
+        "position": "bottom",
+        "height": 28,
+        "margin-bottom": 6,
+        "margin-left": 300,
+        "margin-right": 300,
+        "spacing": 6,
+        "modules-left": ["cpu", "memory", "temperature", "disk"],
+        "modules-center": ["mpris"],
+        "modules-right": ["network#speed", "power-profiles-daemon", "custom/nightlight", "custom/gamemode", "idle_inhibitor"]
+    }
+]

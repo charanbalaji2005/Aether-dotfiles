@@ -11,7 +11,13 @@ guessing.
 Install these however your distribution does it (native package manager, Flatpak, or from
 source), then run `scripts/setup-symlinks.sh` directly — that part isn't distro-specific.
 
-**Required:**
+**Classic interface (default):** Waybar, Rofi (Wayland build), SwayNC, swww, Hyprlock, Hypridle,
+`cliphist` + `wl-clipboard`, `grim` + `slurp`, `libnotify`, Python 3, a Nerd Font
+(`scripts/install-fonts.sh`). Optional: Wlogout, wallust, Pyprland, swappy, ImageMagick,
+mpvpaper, pavucontrol, blueman, nm-applet, nwg-look, qt6ct, Kvantum, qalculate.
+Run `aether-interface doctor` to see what's missing and what each one costs.
+
+**Required for the aether (Quickshell) interface:**
 - Hyprland
 - Quickshell ≥ 0.2 ([quickshell.org](https://quickshell.org) — check there first for a packaged
   build before building from source)

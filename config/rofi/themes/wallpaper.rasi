@@ -1,0 +1,23 @@
+/* AetherOS classic — wallpaper gallery: a wide glass panel with a title,
+   search, a hint line and a grid of large previews (favourites first). */
+@import "base.rasi"
+window { width: 1180px; border-radius: 24px; }
+mainbox { padding: 18px; spacing: 12px; children: [ box-header, message, listview ]; }
+box-header { orientation: horizontal; spacing: 12px; children: [ textbox-title, inputbar ]; expand: false; }
+textbox-title {
+    expand: false;
+    content: "󰸉  Wallpaper gallery";
+    font: "JetBrainsMono Nerd Font Bold 13";
+    text-color: @accent;
+    vertical-align: 0.5;
+    padding: 8px 6px;
+}
+inputbar { children: [ entry ]; }
+entry { placeholder: "Search wallpapers…"; }
+message { padding: 6px 12px; }
+textbox { font: "JetBrainsMono Nerd Font 9"; }
+listview { columns: 5; lines: 2; spacing: 12px; flow: horizontal; fixed-columns: true; scrollbar: false; }
+element { orientation: vertical; padding: 8px; spacing: 6px; border-radius: 16px; }
+element selected.normal { background-color: @bg-sel; text-color: @fg; border: 2px; border-color: @accent; }
+element-icon { size: 196px; border-radius: 12px; horizontal-align: 0.5; }
+element-text { horizontal-align: 0.5; font: "JetBrainsMono Nerd Font 9"; }

@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# aether-zoom — magnify the screen around the pointer (Hyprland cursor:zoom_factor).
+#   aether-zoom in | out          one step (×0.25) closer / back
+#   aether-zoom reset             back to normal size
+#   aether-zoom set FACTOR        1.0 (off) … 4.0
+#   aether-zoom get               print the current factor
+# Every change glides with the same ease-in-out curve as the unlock animation.
+
+set -euo pipefail
+# shellcheck source=SCRIPTDIR/../lib/classic.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/classic.sh"
+
+STEP=0.25 MIN=1.0 MAX=4.0
+
+get() { hyprctl getoption cursor:zoom_factor 2>/dev/null | awk '/float:/ { printf "%.2f\n", $2 }'; }
+
+set_zoom() {
+    local z
+    z="$(awk -v z="$1" -v lo="$MIN" -v hi="$MAX" 'BEGIN { if (z < lo) z = lo; if (z > hi) z = hi; printf "%.2f", z }')"
+    hyprctl keyword bezier "aetherSmooth,0.45,0,0.2,1" >/dev/null 2>&1
+    hyprctl keyword animation "zoomFactor,1,4,aetherSmooth" >/dev/null 2>&1
+    hyprctl keyword cursor:zoom_factor "$z" >/dev/null
+    echo "$z"
+}
+
+case "${1:-get}" in
+    in) set_zoom "$(awk -v z="$(get)" -v s="$STEP" 'BEGIN { print z + s }')" ;;
+    out) set_zoom "$(awk -v z="$(get)" -v s="$STEP" 'BEGIN { print z - s }')" ;;
+    reset) set_zoom 1.0 ;;
+    set)
+        [[ "${2:-}" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "usage: aether-zoom set FACTOR (1.0–4.0)" >&2; exit 2; }
+        set_zoom "$2" ;;
+    get) get ;;
+    -h|--help|help) sed -n '2,7p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+    *) echo "usage: aether-zoom [in | out | reset | set FACTOR | get]" >&2; exit 2 ;;
+esac

@@ -1,0 +1,19 @@
+/* Look "Pixel": small, crisp and compact — a dark strip with tiny icons and
+   a coloured underline on the active workspace. */
+@import "_base.css";
+* { font-size: 11px; }
+window#waybar {
+    background: alpha(@bg, 0.85);
+    border: 1px solid alpha(@fg, 0.10);
+    border-radius: 6px;
+    color: @text;
+}
+.modules-left > widget > *, .modules-center > widget > *, .modules-right > widget > * { padding: 0 6px; color: @subtext; }
+#custom-fedora { color: @accent; font-size: 13px; }
+#workspaces button { color: alpha(@text, 0.4); padding: 0 2px; font-size: 9px; border-bottom: 2px solid transparent; }
+#workspaces button.active { color: @accent; border-bottom: 2px solid @accent; }
+#clock { color: @text; }
+#mpris { color: @accent2; }
+#cpu, #memory { color: @text; }
+#custom-fetch { color: @accent2; }
+#custom-power { color: @urgent; }

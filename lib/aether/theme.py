@@ -72,7 +72,7 @@ def extract_accent(ctx: Context, image: str, mode: str = "dark") -> Tuple[Option
     if tool is None:
         return None, "ImageMagick is not installed (sudo dnf install ImageMagick)"
     # "[0]" selects the first frame (GIF/animated WebP) and keeps the decode cheap.
-    argv = [tool, image + "[0]", "-resize", "96x96", "-colors", "16", "-depth", "8", "-format", "%c", "histogram:info:-"]
+    argv = [tool, "-define", "jpeg:size=192x192", image + "[0]", "-resize", "96x96", "-colors", "16", "-depth", "8", "-format", "%c", "histogram:info:-"]
     res = ctx.run(argv, timeout=30)
     if not res.ok:
         return None, (res.err.strip().splitlines() or ["ImageMagick failed"])[-1]

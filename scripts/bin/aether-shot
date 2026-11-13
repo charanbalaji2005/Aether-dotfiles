@@ -1,0 +1,99 @@
+#!/usr/bin/bash
+# aether-shot — screenshots for the AetherOS classic interface (grim + slurp + swappy).
+#
+#   aether-shot screen  [--delay N] [--edit]   every monitor
+#   aether-shot area    [--delay N] [--edit]   drag a region (click a window to take it whole)
+#   aether-shot window  [--edit]               the active window
+#   aether-shot focused [--edit]               the focused monitor
+#
+# Saved to $AETHER_SCREENSHOT_DIR (default ~/Pictures/Screenshots), copied to
+# the clipboard, and announced with a notification whose "Edit" action
+# opens swappy (and "Open" the image viewer).
+
+set -euo pipefail
+# shellcheck source=SCRIPTDIR/../lib/classic.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/classic.sh"
+
+DIR="${AETHER_SCREENSHOT_DIR:-$(xdg-user-dir PICTURES 2>/dev/null || echo "$HOME/Pictures")/Screenshots}"
+MODE="${1:-}"; [ $# -gt 0 ] && shift
+case "$MODE" in
+    -h|--help|help) sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    screen|area|window|focused) ;;
+    *) sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+esac
+DELAY=0; EDIT=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --delay) DELAY="${2:-0}"; shift ;;
+        --edit) EDIT=1 ;;
+        *) echo "unknown option: $1" >&2; exit 2 ;;
+    esac
+    shift
+done
+[[ "$DELAY" =~ ^[0-9]+$ ]] || { echo "--delay needs whole seconds" >&2; exit 2; }
+
+need grim grim
+mkdir -p "$DIR"
+FILE="$DIR/Screenshot_$(date +%Y-%m-%d_%H-%M-%S).png"
+
+countdown() {
+    local i
+    for ((i = DELAY; i > 0; i--)); do
+        notify "Screenshot in $i…" "" camera-photo -e -u low -t 900 -h string:x-canonical-private-synchronous:aether-shot
+        sleep 1
+    done
+}
+
+geometry=""
+case "$MODE" in
+    screen) countdown ;;
+    focused)
+        countdown
+        in_hyprland || { echo "focused needs Hyprland" >&2; exit 1; }
+        out="$(hypr_monitors | awk '$5 == 1 { print $1 }')"
+        grim -o "$out" "$FILE" ;;
+    area)
+        need slurp slurp
+        # Offer the visible windows as click targets.
+        boxes=""
+        if in_hyprland; then
+            boxes="$(hyprctl -j clients 2>/dev/null | python3 -c 'import json, sys
+ws = set()
+for c in json.load(sys.stdin):
+    if c.get("mapped") and not c.get("hidden"):
+        (x, y), (w, h) = c["at"], c["size"]
+        print("%d,%d %dx%d" % (x, y, w, h))' 2>/dev/null || true)"
+        fi
+        geometry="$(printf '%s\n' "$boxes" | sed '/^$/d' | slurp -d -b '#00000066' -c '#ffffffcc' -w 2)" || exit 0
+        countdown ;;
+    window)
+        in_hyprland || { echo "window needs Hyprland" >&2; exit 1; }
+        geometry="$(hyprctl -j activewindow | python3 -c 'import json, sys
+c = json.load(sys.stdin)
+(x, y), (w, h) = c["at"], c["size"]
+print("%d,%d %dx%d" % (x, y, w, h))' 2>/dev/null)" || { notify "Screenshot" "No active window" dialog-warning -e; exit 1; } ;;
+    *) sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac
+
+if [ "$MODE" != focused ]; then
+    if [ -n "$geometry" ]; then grim -g "$geometry" "$FILE"; else grim "$FILE"; fi
+fi
+[ -s "$FILE" ] || { notify "Screenshot failed" "grim wrote nothing" dialog-error; exit 1; }
+have wl-copy && wl-copy --type image/png < "$FILE"
+have canberra-gtk-play && canberra-gtk-play -i screen-capture >/dev/null 2>&1 &
+
+if [ "$EDIT" -eq 1 ]; then
+    need swappy swappy
+    exec swappy -f "$FILE" -o "$FILE"
+fi
+
+if have notify-send; then
+    action="$(notify-send -a AetherOS -i "$FILE" -A edit=Edit -A open=Open -A folder="Show in folder" \
+        "Screenshot saved" "$(basename "$FILE") · copied to clipboard" 2>/dev/null || true)"
+    case "$action" in
+        edit) have swappy && swappy -f "$FILE" -o "$FILE" ;;
+        open) setsid -f xdg-open "$FILE" >/dev/null 2>&1 ;;
+        folder) setsid -f xdg-open "$DIR" >/dev/null 2>&1 ;;
+    esac
+fi
+echo "$FILE"

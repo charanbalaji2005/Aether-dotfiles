@@ -11,7 +11,7 @@ qt6-qtshadertools
 
 # Control centre
 hyprsunset              # night light
-power-profiles-daemon   # battery saver / performance (tuned-ppd provides the same D-Bus API)
+power-profiles-daemon|tuned-ppd   # battery saver / performance; tuned-ppd (Fedora default) conflicts with it, so either counts
 
 # Theme
 ImageMagick             # accent colour from the wallpaper

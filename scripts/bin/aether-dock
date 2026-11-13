@@ -1,0 +1,67 @@
+#!/usr/bin/bash
+# aether-dock — pinned apps of the classic interface's dock (layouts "home" and "desk").
+#
+#   aether-dock menu                 Rofi: pin, unpin, reorder, icon size (right-click the dock's grid button)
+#   aether-dock list | apps          pinned apps | installed apps you can pin
+#   aether-dock add ID | remove ID | move ID left|right | size PX
+#   aether-dock activate ID          focus its window (switching workspace) or launch it
+#   aether-dock autohide auto|smart|off   magnify 1.0..2.0
+#   aether-dock run | stop           the native dock (looks "home" and "desk"; aether-waybar starts it)
+#
+# Icons come from your icon theme; a click runs `aether-dock activate ID` (focus the
+# open window on any workspace, or launch the app if it has none). Changes
+# regenerate the dock's Waybar modules and restart Waybar if it is running.
+set -euo pipefail
+# shellcheck source=SCRIPTDIR/../lib/classic.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/classic.sh"
+LIB="$CLASSIC_REPO/lib"
+
+dock() { python3 -I -c 'import sys; sys.path.insert(0, sys.argv.pop(1)); from aether.dock import main; sys.exit(main(sys.argv[1:]))' "$LIB" "$@"; }
+
+# Only restart a Waybar of this user's running Hyprland session: outside one
+# (a TTY, a script with another HOME) a restart would hit some other session's bar.
+refresh() { if in_hyprland && pgrep -u "$(id -u)" -x waybar >/dev/null; then aether-waybar restart; fi; }
+
+menu() {
+    local sel id rc
+    sel="$( {
+        printf '%s\t@add\n' "  Pin an app…"
+        printf '%s\t@size\n' "󰍉  Icon size…"
+        printf '%s\t@hide\n' "󰘖  Auto-hide: $(dock list | sed -n 's/^autohide: \([a-z]*\).*/\1/p')…"
+        printf '%s\t@mag\n' "󰍉  Magnification…"
+        dock list | grep -v '^icon size\|^autohide' | awk '{ printf "󰐃  %s  (Del: unpin · Alt+←/→: move)\t%s\n", $1, $1 }'
+    } | amenu "Dock" -display-columns 1 -display-column-separator $'\t' \
+        -kb-custom-1 "Delete" -kb-custom-2 "Alt+Left" -kb-custom-3 "Alt+Right" -mesg "Enter on an app opens it")" && rc=0 || rc=$?
+    id="${sel##*$'\t'}"
+    case "$rc:$id" in
+        0:@add)
+            sel="$(dock apps | amenu "Pin" -mesg "Pick an app to add to the dock")" || return 0
+            dock add "${sel%% *}" >/dev/null && refresh ;;
+        0:@size)
+            sel="$(printf '32\n40\n48\n56\n64\n' | amenu "Icon size")" || return 0
+            dock size "$sel" >/dev/null && refresh ;;
+        0:@hide)
+            sel="$(printf 'auto\tHide until the pointer touches the bottom edge\nsmart\tHide only while a window overlaps the dock\noff\tAlways show it (windows make room)\n' \
+                | amenu "Auto-hide" -display-columns 1,2 -display-column-separator $'\t')" || return 0
+            dock autohide "${sel%%$'\t'*}" >/dev/null ;;
+        0:@mag)
+            sel="$(printf '1.0\toff\n1.3\tsubtle\n1.5\tmacOS-like\n1.8\tlarge\n' | amenu "Magnification" -display-columns 1,2 -display-column-separator $'\t')" || return 0
+            dock magnify "${sel%%$'\t'*}" >/dev/null ;;
+        0:*) [ -n "$id" ] && dock activate "$id" >/dev/null 2>&1 ;;
+        10:*) dock remove "$id" >/dev/null && refresh; menu ;;
+        11:*) dock move "$id" left >/dev/null && refresh; menu ;;
+        12:*) dock move "$id" right >/dev/null && refresh; menu ;;
+    esac
+}
+
+case "${1:-menu}" in
+    menu) menu ;;
+    add|remove|move|size) dock "$@" && refresh ;;
+    run)  # the native dock: one instance, detached
+        pgrep -f 'aether\.dock_app' >/dev/null && exit 0
+        setsid -f python3 -I -c 'import sys; sys.path.insert(0, sys.argv.pop(1)); from aether.dock_app import main; sys.exit(main())' "$LIB" \
+            >"${XDG_RUNTIME_DIR:-/tmp}/aether-dock.log" 2>&1 ;;
+    stop) pkill -f 'aether\.dock_app' || true ;;
+    -h|--help|help) dock --help ;;
+    *) dock "$@" ;;
+esac

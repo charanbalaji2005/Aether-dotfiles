@@ -1,0 +1,11 @@
+#!/usr/bin/bash
+# aether-settings — the AetherOS Settings window (GTK 3) for the classic interface.
+#   aether-settings [looks|appearance|bar|island|dock|lock|wallpaper|keys|system]
+# Without GTK's Python bindings it falls back to the Rofi settings menu.
+set -euo pipefail
+LIB="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../lib" && pwd)"
+if ! python3 -c 'import gi; gi.require_version("Gtk", "3.0"); from gi.repository import Gtk' >/dev/null 2>&1; then
+    echo "aether-settings: GTK 3 for Python is missing (sudo dnf install python3-gobject gtk3) — opening the menu instead" >&2
+    exec "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/aether-menu" settings
+fi
+exec python3 -I -c 'import sys; sys.path.insert(0, sys.argv.pop(1)); from aether.settings_app import main; sys.exit(main(sys.argv[1:]))' "$LIB" "$@"

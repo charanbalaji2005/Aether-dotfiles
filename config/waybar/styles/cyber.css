@@ -1,0 +1,30 @@
+/* Look "Cyberpunk Neon": a black bar with a glowing neon edge, square
+   segments and bright readouts. */
+@import "_base.css";
+* { font-size: 12px; font-weight: 700; }
+window#waybar {
+    background: alpha(@bg, 0.92);
+    border: 1px solid @accent;
+    border-radius: 2px;
+    box-shadow: 0 0 10px alpha(@accent, 0.55);
+    color: @accent;
+}
+.modules-left > widget > *, .modules-center > widget > *, .modules-right > widget > * {
+    padding: 0 9px;
+    margin: 4px 2px;
+    color: @accent;
+    border-left: 2px solid alpha(@accent2, 0.7);
+}
+#custom-menu { color: @accent2; border-left: none; font-size: 15px; }
+#workspaces button { color: alpha(@accent, 0.45); padding: 0 5px; border-radius: 0; }
+#workspaces button.active { color: @bg; background: @accent; }
+#workspaces button.urgent { color: @bg; background: @accent2; }
+#workspaces button:hover { background: alpha(@accent, 0.2); }
+#hardware > *, #quick > * { border-left: none; margin: 0; padding: 0 5px; }
+#clock { color: @accent2; }
+#cpu, #memory { color: @green; }
+#temperature, #battery.warning { color: @yellow; }
+#network { color: @cyan; }
+#pulseaudio { color: @magenta; }
+#custom-power { color: @accent2; }
+#tray.empty { border: none; padding: 0; margin: 0; }

@@ -1,0 +1,83 @@
+#!/usr/bin/bash
+# aether-look — switch the whole appearance of the classic interface at once.
+#
+#   aether-look                 Rofi menu of looks (Super+Ctrl+L)
+#   aether-look apply NAME      bar layout + style + launcher + palette + gaps/rounding + lock screen
+#   aether-look list            the looks, from config/aether-looks.tsv
+#   aether-look current
+#
+# A look only records choices: your wallpaper, keybinds and settings stay.
+# Each part can still be changed on its own afterwards (Super+Ctrl+B, Super+T).
+
+set -euo pipefail
+# shellcheck source=SCRIPTDIR/../lib/classic.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/classic.sh"
+
+LOOKS="$CLASSIC_REPO/config/aether-looks.tsv"
+FRAG="${XDG_CONFIG_HOME:-$HOME/.config}/aether-shell/hypr/look.conf"
+
+rows() { grep -v '^#' "$LOOKS" | grep -v '^[[:space:]]*$'; }
+
+lookup() {  # lookup NAME -> the row's fields on one line, tab-separated
+    rows | awk -F'\t' -v n="$1" '$1 == n'
+}
+
+write_frag() {  # write_frag gaps_in gaps_out border rounding
+    local tmp
+    mkdir -p "$(dirname "$FRAG")"
+    tmp="$(mktemp -p "$(dirname "$FRAG")")"
+    cat > "$tmp" <<CONF
+# Written by aether-look ($(cstate_get look default)) — spacing and corners of the active look.
+general {
+    gaps_in = $1
+    gaps_out = $2
+    border_size = $3
+}
+decoration {
+    rounding = $4
+}
+CONF
+    mv "$tmp" "$FRAG"
+}
+
+apply() {
+    local row name layout style launcher palette gi go bs rd lock desc
+    row="$(lookup "$1")"
+    [ -n "$row" ] || { echo "no look named '$1' (see: aether-look list)" >&2; return 1; }
+    IFS=$'\t' read -r name layout style launcher palette gi go bs rd lock desc <<< "$row"
+    for n in "$gi" "$go" "$bs" "$rd"; do [[ "$n" =~ ^[0-9]+$ ]] || { echo "bad number in $LOOKS for $name" >&2; return 1; }; done
+
+    cstate_set look "$name"
+    cstate_set waybar_layout "$layout"
+    cstate_set rofi_launcher "$launcher"
+    aether-colors waybar-style "$style" --no-reload >/dev/null
+    aether-colors lock-design "$lock" --no-reload >/dev/null
+    if [ "$palette" = wallpaper ]; then
+        case "$(cstate_get source image)" in wallust|image) aether-colors apply >/dev/null ;; *) aether-colors source image >/dev/null ;; esac
+    else
+        aether-colors source preset "$palette" >/dev/null
+    fi
+    write_frag "$gi" "$go" "$bs" "$rd"
+    if in_hyprland && [ -z "${AETHER_LOOK_NO_RESTART:-}" ]; then
+        hyprctl --batch "keyword general:gaps_in $gi; keyword general:gaps_out $go; keyword general:border_size $bs; keyword decoration:rounding $rd" >/dev/null || true
+        aether-waybar restart
+    fi
+    [ -n "${AETHER_LOOK_NO_RESTART:-}" ] || notify "Look: ${desc%% —*}" "${desc#*— }" preferences-desktop-theme -e -u low
+    echo "look: $name"
+}
+
+menu() {
+    local sel
+    sel="$(rows | awk -F'\t' -v cur="$(cstate_get look default)" '{ printf "%s  %s\t%s\n", ($1 == cur ? "󰄬" : " "), $11, $1 }' \
+        | amenu "Look" -display-columns 1 -display-column-separator $'\t' -mesg "Bar, launcher, colours and spacing together")" || return 0
+    apply "${sel##*$'\t'}"
+}
+
+case "${1:-menu}" in
+    menu) if pgrep -x rofi >/dev/null; then pkill -x rofi; else menu; fi ;;
+    apply) apply "${2:?usage: aether-look apply NAME}" ;;
+    list) rows | awk -F'\t' '{ printf "%-10s %s\n", $1, $11 }' ;;
+    current) cstate_get look default ;;
+    -h|--help|help) sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+    *) echo "usage: aether-look [apply NAME | list | current]" >&2; exit 2 ;;
+esac

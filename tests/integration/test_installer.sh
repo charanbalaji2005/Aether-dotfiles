@@ -20,6 +20,8 @@ fail() { echo "FAIL: $1"; exit 1; }
 
 echo "my own zshrc" > "$HOME/.zshrc"
 mkdir -p "$HOME/.config/kitty" && echo "my kitty" > "$HOME/.config/kitty/kitty.conf"
+# An existing Waybar setup (e.g. from another dotfiles project) must survive.
+mkdir -p "$HOME/.config/waybar" && echo '{"my": "bar"}' > "$HOME/.config/waybar/config"
 
 before="$(find "$HOME" | sort)"
 "$REPO_DIR/install.sh" --dry-run --no-packages >/dev/null </dev/null || fail "--dry-run exited non-zero"
@@ -35,6 +37,9 @@ echo "PASS: --check passes"
 grep -q $'\tbackup\t'"$HOME/.config/kitty" "$XDG_STATE_HOME/aether/manifest.tsv" || fail "moved-aside kitty config not in the manifest"
 for f in hardware compat profile theme cursor; do [ -f "$HOME/.config/aether-shell/hypr/$f.conf" ] || fail "fragment $f.conf missing"; done
 [ -s "$HOME/.config/aether-shell/terminal/kitty-theme.conf" ] || fail "kitty theme not generated"
+[ "$(readlink "$HOME/.config/waybar")" = "$REPO_DIR/config/waybar" ] || fail "waybar not linked"
+grep -q $'\tbackup\t'"$HOME/.config/waybar" "$XDG_STATE_HOME/aether/manifest.tsv" || fail "existing waybar config not moved aside"
+grep -q "interfaces/classic.conf" "$HOME/.config/aether-shell/hypr/interface.conf" || fail "classic interface not selected by default"
 echo "PASS: --install links, records, generates fragments and keeps ~/.zshrc"
 
 n1="$(find "$HOME/.config" -maxdepth 1 -name 'kitty.bak.*' | wc -l)"
@@ -52,10 +57,34 @@ echo "PASS: interrupted install resumes from saved progress"
 [ -d "$HOME/.config/kitty" ] && [ ! -L "$HOME/.config/kitty" ] || fail "kitty config not restored as a real directory"
 [ "$(cat "$HOME/.config/kitty/kitty.conf")" = "my kitty" ] || fail "restored kitty.conf content differs"
 [ "$(cat "$HOME/.zshrc")" = "my own zshrc" ] || fail "rollback touched ~/.zshrc"
+[ "$(cat "$HOME/.config/waybar/config" 2>/dev/null)" = '{"my": "bar"}' ] || fail "rollback didn't restore the original waybar config"
 [ ! -e "$HOME/.config/hypr" ] || fail "repo symlink left after rollback"
 [ -f "$HOME/.config/aether-shell/hypr/profile.conf" ] || fail "rollback deleted user settings it should keep"
 echo "PASS: --rollback restores originals and keeps settings"
 
+# Package planning with alternatives ("rofi-wayland|rofi"), against fake
+# rpm/dnf/sudo: nothing installed; the repositories offer "rofi" but not
+# "rofi-wayland", and no "wlogout".
+mkdir -p "$T/fakebin"
+printf '#!/bin/sh\nexit 1\n' > "$T/fakebin/rpm"
+printf '#!/bin/sh\nexit 0\n' > "$T/fakebin/sudo"
+cat > "$T/fakebin/dnf5" <<'FAKE'
+#!/bin/bash
+[ "$1" = --version ] && { echo "dnf5 5.2"; exit 0; }
+for a in "$@"; do case "$a" in -q|repoquery|--available|--qf|'%{name}\n') ;; rofi-wayland|wlogout) ;; *) echo "$a" ;; esac; done
+FAKE
+chmod +x "$T/fakebin/"*
+out="$(PATH="$T/fakebin:$PATH" "$REPO_DIR/install.sh" --check --interface classic 2>&1 </dev/null || true)"
+grep -q "To install.* rofi " <<< "$out" || fail "the alternative 'rofi' was not chosen when rofi-wayland is unavailable"
+grep -q "To install.*rofi-wayland" <<< "$out" && fail "an unavailable alternative was planned"
+grep -q "wlogout is not available" <<< "$out" || fail "a missing package was not reported"
+grep -q "quickshell" <<< "$(grep 'To install' <<< "$out")" && fail "classic interface planned Quickshell packages"
+out="$(PATH="$T/fakebin:$PATH" "$REPO_DIR/install.sh" --check --interface aether 2>&1 </dev/null || true)"
+grep -q "To install.* waybar" <<< "$out" && fail "aether interface planned Waybar"
+echo "PASS: package plan picks available alternatives and follows the interface"
+
+out="$("$REPO_DIR/install.sh" --install --interface rainbow 2>&1 </dev/null || true)"
+grep -q "must be classic or aether" <<< "$out" || fail "bad --interface accepted"
 out="$("$REPO_DIR/install.sh" --install --mode bogus 2>&1 </dev/null || true)"
 grep -q "must be minimal, recommended or complete" <<< "$out" || fail "bad --mode accepted"
 echo "PASS: invalid options are rejected"

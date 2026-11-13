@@ -1,0 +1,14 @@
+// The island of the home look. aether-waybar runs it as its own Waybar so it can
+// be shown only while music plays or a level changes (aether-island show/hide),
+// and never covers your windows otherwise.
+{
+        "include": ["~/.config/waybar/modules.jsonc"],
+        "name": "home-island",
+        "layer": "overlay",
+        "position": "top",
+        "width": 620,
+        "margin-top": 6,
+        "exclusive": false,
+        "start_hidden": true,
+        "modules-center": ["group/island"]
+    }

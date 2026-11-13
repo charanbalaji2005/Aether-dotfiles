@@ -1,0 +1,109 @@
+#!/usr/bin/bash
+# aether-classic-start — start the AetherOS classic interface in a Hyprland session.
+#
+#   aether-classic-start            start whatever isn't running (safe to run again)
+#   aether-classic-start --reload   re-apply colours, restart Waybar, reload SwayNC and Hyprland
+#   aether-classic-start --stop     stop the classic interface (used when switching to the aether shell)
+#
+# Every component is optional except Waybar: a missing program is logged
+# and skipped, never fatal. Log: $XDG_RUNTIME_DIR/aether-classic-<uid>/start.log
+
+set -uo pipefail
+# shellcheck source=SCRIPTDIR/../lib/classic.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/classic.sh"
+
+CFG="${XDG_CONFIG_HOME:-$HOME/.config}"
+mkdir -p "$CLASSIC_RUNTIME"
+LOG="$CLASSIC_RUNTIME/start.log"
+
+log() { printf '%s %s\n' "$(date +%H:%M:%S)" "$*" >> "$LOG"; }
+
+spawn() {  # spawn <process-name> <cmd…>: start once, detached, output to the log
+    local name="$1"; shift
+    if ! have "$1"; then log "skip $name: $1 not installed"; return 0; fi
+    # Script-based programs (pypr, blueman-applet) carry their script name as
+    # the process name too, so an exact match is enough.
+    if pgrep -x "$name" >/dev/null 2>&1; then
+        log "ok   $name already running"; return 0
+    fi
+    setsid -f "$@" >> "$LOG" 2>&1 && log "start $name"
+}
+
+swaync_start() {
+    local style="$CLASSIC_DIR/swaync/style.css"
+    [ -f "$style" ] || style="$CFG/swaync/style.css"
+    # A notification sent before login finished D-Bus-activates swaync. With
+    # the AetherOS drop-in (system/systemd/swaync.service.d) that instance is
+    # styled; one started without it (bare style.css, no colours) is replaced
+    # through systemd so D-Bus activation cannot race a manual restart.
+    if pgrep -x swaync >/dev/null 2>&1 && ! pgrep -xf "swaync -c .* -s $style" >/dev/null 2>&1; then
+        systemctl --user daemon-reload >/dev/null 2>&1
+        if systemctl --user restart swaync.service >/dev/null 2>&1; then
+            log "restarted swaync with the AetherOS style"; return 0
+        fi
+        pkill -x swaync 2>/dev/null
+        timeout 3 bash -c 'while pgrep -x swaync >/dev/null; do :; done'
+    fi
+    spawn swaync swaync -c "$CFG/swaync/config.json" -s "$style"
+}
+
+start_all() {
+    : > "$LOG"
+    log "AetherOS classic interface starting (Hyprland ${HYPRLAND_INSTANCE_SIGNATURE:+session})"
+    aether-colors init >> "$LOG" 2>&1 || log "aether-colors init failed (see above)"
+
+    # Bar and notifications first: they are what the user sees.
+    aether-waybar start >> "$LOG" 2>&1 || log "waybar failed to start"
+    swaync_start
+
+    # Wallpaper in the background (thumbnails/colours can take a moment).
+    ( aether-wall restore >> "$LOG" 2>&1 || log "wallpaper restore failed" ) &
+
+    # Clipboard history: the systemd unit if possible, else a plain watcher.
+    if ! { have systemctl && systemctl --user start aether-clipboard.service 2>/dev/null; }; then
+        have wl-paste && have cliphist && spawn wl-paste wl-paste --watch aether-clip-store
+    fi
+
+    [ "$(cstate_get idle_inhibit off)" = on ] || spawn hypridle hypridle
+    spawn nm-applet nm-applet --indicator
+    if have bluetoothctl && bluetoothctl list 2>/dev/null | grep -q .; then spawn blueman-applet blueman-applet; fi
+    spawn pypr pypr
+    if ! pgrep -f 'hyprpolkitagent|polkit-gnome-authentication-agent|polkit-kde-authentication-agent' >/dev/null; then
+        if [ -x /usr/libexec/hyprpolkitagent ]; then setsid -f /usr/libexec/hyprpolkitagent >> "$LOG" 2>&1
+        elif [ -x /usr/libexec/polkit-gnome-authentication-agent-1 ]; then setsid -f /usr/libexec/polkit-gnome-authentication-agent-1 >> "$LOG" 2>&1
+        else log "no polkit agent found (install hyprpolkitagent)"; fi
+    fi
+
+    [ "$(cstate_get nightlight off)" = on ] && aether-toggle nightlight on >/dev/null 2>&1
+    local mins; mins="$(cstate_get slideshow 0)"
+    [ "$mins" != 0 ] && aether-wall slideshow start "$mins" >/dev/null 2>&1
+    log "started"
+}
+
+stop_all() {
+    aether-wall slideshow stop >/dev/null 2>&1 || true
+    local p
+    for p in waybar swaync nm-applet hypridle pypr swww-daemon awww-daemon mpvpaper hyprsunset; do
+        pkill -x "$p" 2>/dev/null || true
+    done
+    pkill -x blueman-applet 2>/dev/null || true
+    log "stopped"
+}
+
+reload_all() {
+    aether-colors apply >> "$LOG" 2>&1 || log "colour re-apply failed"
+    aether-waybar restart >> "$LOG" 2>&1
+    swaync_start
+    swaync-client --reload-config >/dev/null 2>&1; swaync-client --reload-css >/dev/null 2>&1
+    in_hyprland && hyprctl reload >/dev/null
+    have pypr && pgrep -x pypr >/dev/null && pypr reload >/dev/null 2>&1
+    notify "Desktop reloaded" "Waybar, notifications, colours and Hyprland" view-refresh -e -u low
+}
+
+case "${1:-}" in
+    "") start_all ;;
+    --reload) reload_all ;;
+    --stop) stop_all ;;
+    -h|--help) sed -n '2,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+    *) echo "unknown option: $1" >&2; exit 2 ;;
+esac

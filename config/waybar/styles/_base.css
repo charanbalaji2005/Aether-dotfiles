@@ -1,0 +1,17 @@
+/* Shared reset imported by the look styles (lofi, frost, desk, orbit, retro,
+   pixel, blocks). Colours (@bg, @accent, …) come from aether-colors. */
+* {
+    font-family: "JetBrainsMono Nerd Font", "JetBrains Mono", "Symbols Nerd Font", sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    min-height: 0;
+    border: none;
+    border-radius: 0;
+}
+tooltip { background: alpha(@bg, 0.96); border: 1px solid @border; border-radius: 10px; }
+tooltip label { color: @text; padding: 3px 6px; }
+#tray menu { background: @bg; color: @text; border: 1px solid @border; }
+#workspaces button { background: transparent; box-shadow: none; }
+#workspaces button:hover { box-shadow: none; }
+#battery.critical:not(.charging), #temperature.critical, #cpu.critical, #memory.critical { color: @urgent; }
+#pulseaudio.muted, #pulseaudio.source-muted, #network.disconnected, #bluetooth.off, #bluetooth.disabled { color: @muted; }

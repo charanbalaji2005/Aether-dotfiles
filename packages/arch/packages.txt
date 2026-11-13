@@ -71,3 +71,31 @@ git
 python
 pciutils
 hwdata
+
+# Classic interface (default) — Waybar · Rofi · SwayNC · Wlogout · swww
+# Not listed because their repository (official vs AUR) varies: wlogout,
+# wallust, pyprland — install them with your AUR helper; each is optional
+# (aether-interface doctor shows the fallback used without it).
+waybar
+rofi-wayland
+swaync
+swww
+hyprlock
+hypridle
+swappy
+pavucontrol
+pamixer
+network-manager-applet
+blueman
+thunar
+tumbler
+file-roller
+nwg-look
+qt5ct
+qt6ct
+kvantum
+papirus-icon-theme
+ttf-jetbrains-mono-nerd
+imagemagick
+libqalculate
+yad

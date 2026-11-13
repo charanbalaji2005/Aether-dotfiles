@@ -152,12 +152,12 @@ done
 
 section "Fonts"
 if command -v fc-list >/dev/null 2>&1; then
-    if fc-list | grep -qi "jetbrains mono"; then
+    if fc-list | grep -i "jetbrains mono" >/dev/null; then
         pass "JetBrains Mono found"
     else
         warn "JetBrains Mono not found — terminal/monospace UI will fall back to a system font"
     fi
-    if fc-list | grep -qi "manrope"; then
+    if fc-list | grep -i "manrope" >/dev/null; then
         pass "Manrope found"
     else
         warn "Manrope not found — GTK apps will fall back to a system font"

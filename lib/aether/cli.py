@@ -674,6 +674,11 @@ def cmd_telemetry(ctx: Context, args) -> int:
 def hyprland_config_check(ctx: Context) -> List[Dict[str, str]]:
     checks = []
     conf = os.path.join(os.environ.get("HOME", ""), ".config", "hypr", "hyprland.conf")
+    # Hyprland 0.57+ loads hyprland.lua (which feeds hyprland.conf through
+    # lua/aether_compat.lua) and parses any -c file as Lua.
+    lua_conf = os.path.join(os.path.dirname(conf), "hyprland.lua")
+    if os.path.isfile(lua_conf):
+        conf = lua_conf
     for frag in (hyprconf.hardware_conf_path(), hyprconf.profile_conf_path(), hyprconf.compat_conf_path()):
         if os.path.isfile(frag):
             checks.append({"level": "pass", "text": "%s exists" % frag, "hint": ""})
@@ -682,6 +687,12 @@ def hyprland_config_check(ctx: Context) -> List[Dict[str, str]]:
     if ctx.which("Hyprland") and os.path.isfile(conf):
         res = ctx.run(["Hyprland", "--verify-config", "-c", conf], timeout=30)
         text = (res.out + res.err).strip()
+        # Only the parse report matters; startup log lines above it (e.g. a
+        # socket that can't bind beside the running session) are noise.
+        if "Config parsing result:" in text:
+            text = text.split("Config parsing result:", 1)[1].strip()
+            if text.lower() in ("", "config ok"):
+                text = ""
         if res.ok and "error" not in text.lower():
             checks.append({"level": "pass", "text": "Hyprland --verify-config: no errors", "hint": ""})
         elif res.rc == 127:
@@ -775,6 +786,20 @@ def cmd_repair(ctx: Context, args) -> int:
         actions.append(("Write version-specific Hyprland settings to %s" % compat,
                         lambda: hyprconf.write_fragment(compat, hyprconf.generate_compat_conf(ctx)), False))
 
+    # The interface fragment must select an interface, or Hyprland starts with
+    # no bar, launcher or menu keys.
+    from aether import classic_colors
+    iface = classic_colors.interface()
+    iface_conf = os.path.join(os.path.dirname(hyprconf.compat_conf_path()), "interface.conf")
+    try:
+        iface_ok = "interfaces/" in open(iface_conf, encoding="utf-8", errors="replace").read()
+    except OSError:
+        iface_ok = False
+    if not iface_ok:
+        actions.append(("Select the %s interface in %s" % (iface, iface_conf),
+                        lambda: subprocess.call(["bash", os.path.join(REPO_DIR, "scripts", "bin", "aether-interface"),
+                                                 "set", iface, "--no-reload", "--no-services"]), False))
+
     cfg = theme.config_file()
     if os.path.exists(cfg) and shell_config_check()[0]["level"] == "fail":
         def _reset_cfg(cfg=cfg):
@@ -792,9 +817,9 @@ def cmd_repair(ctx: Context, args) -> int:
     home = os.environ.get("HOME", "")
     managed = [
         os.path.join(home, ".config", "hypr"),
-        os.path.join(home, ".config", "quickshell", "aether-shell"),
         os.path.join(home, ".local", "bin", "aether"),
-    ]
+    ] + ([os.path.join(home, ".config", "quickshell", "aether-shell")] if iface == "aether" else
+         [os.path.join(home, ".config", d) for d in ("waybar", "rofi", "swaync", "wlogout")])
     broken = [m for m in managed if not os.path.exists(m)]
     setup = os.path.join(REPO_DIR, "scripts", "setup-symlinks.sh")
     if broken and os.path.isfile(setup):
@@ -802,7 +827,8 @@ def cmd_repair(ctx: Context, args) -> int:
                         lambda: subprocess.call(["bash", setup]), True))
 
     if ctx.which("systemctl") and os.environ.get("XDG_RUNTIME_DIR"):
-        for unit in ("aether-shell.service", "aether-clipboard.service"):
+        units = ("aether-shell.service", "aether-clipboard.service") if iface == "aether" else ("aether-clipboard.service",)
+        for unit in units:
             res = ctx.run(["systemctl", "--user", "is-enabled", unit], timeout=5)
             state = res.out.strip()
             if state not in ("enabled", "enabled-runtime", "static", "linked"):

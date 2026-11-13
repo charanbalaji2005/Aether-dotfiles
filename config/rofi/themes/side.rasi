@@ -1,0 +1,6 @@
+/* AetherOS classic — "side" launcher: a tall panel docked to the left edge. */
+@import "base.rasi"
+window { location: west; anchor: west; x-offset: 12px; width: 380px; height: 92%; border-radius: 18px; }
+mainbox { children: [ inputbar, listview, mode-switcher ]; }
+listview { lines: 14; }
+element-icon { size: 26px; }

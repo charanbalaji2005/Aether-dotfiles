@@ -1,0 +1,15 @@
+// AetherOS look "Pixel": a compact bar of small icons and short readings,
+// made for busy pixel-art wallpapers and a fastfetch window (Super+F12).
+{
+    "include": ["~/.config/waybar/modules.jsonc"],
+    "layer": "top",
+    "position": "top",
+    "height": 26,
+    "margin-top": 4,
+    "margin-left": 160,
+    "margin-right": 160,
+    "spacing": 2,
+    "modules-left": ["custom/fedora", "hyprland/workspaces#dots", "mpris"],
+    "modules-center": ["clock#stack", "custom/weather"],
+    "modules-right": ["cpu#text", "memory#text", "network", "bluetooth", "pulseaudio", "battery", "custom/fetch", "custom/notification", "custom/power"]
+}

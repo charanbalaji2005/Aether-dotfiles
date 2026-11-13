@@ -149,6 +149,30 @@ def check_pixels(lines):
     return out
 
 
+def make_fixtures():
+    """Write the images the wallpaper tests load from /tmp: solid red, blue
+    and green (320x180); 20 px black/white vertical stripes; and a depth map
+    that is near (white) on the left half and far (black) on the right.
+    Without this the suites depended on files left over from another run."""
+    from PySide6.QtGui import QColor, QImage
+    def solid(name, color):
+        img = QImage(320, 180, QImage.Format_RGB32)
+        img.fill(QColor(color))
+        img.save("/tmp/aether-%s.png" % name)
+    for name, color in (("red", "#ff0000"), ("blue", "#0000ff"), ("green", "#00ff00")):
+        solid(name, color)
+    stripes = QImage(320, 180, QImage.Format_RGB32)
+    depth = QImage(320, 180, QImage.Format_RGB32)
+    for x in range(320):
+        s = QColor(255, 255, 255) if x % 20 < 10 else QColor(0, 0, 0)
+        d = QColor(255, 255, 255) if x < 160 else QColor(0, 0, 0)
+        for y in range(180):
+            stripes.setPixelColor(x, y, s)
+            depth.setPixelColor(x, y, d)
+    stripes.save("/tmp/aether-stripes.png")
+    depth.save("/tmp/aether-depth.png")
+
+
 def main(argv):
     try:
         import PySide6  # noqa: F401
@@ -159,6 +183,7 @@ def main(argv):
         print("SKIP: no display (run under: xvfb-run -a env QT_QPA_PLATFORM=xcb ...)")
         return 77
     tests = argv or sorted(glob.glob(os.path.join(HERE, "tst_*.qml")))
+    make_fixtures()
     failed = 0
     with tempfile.TemporaryDirectory(prefix="aether-qml-") as tmp:
         build_tree(tmp)

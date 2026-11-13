@@ -18,9 +18,15 @@ pkgdesc="AetherOS Hyprland desktop: Quickshell shell, configs and tools"
 arch=('any')
 url="https://github.com/OWNER/aetheros-dotfiles"
 license=('GPL-3.0-or-later')
-depends=('hyprland' 'quickshell' 'python' 'kitty' 'zsh' 'bash')
-optdepends=('hypridle: idle locking and dimming'
-            'hyprlock: alternative lock screen'
+depends=('hyprland' 'python' 'kitty' 'zsh' 'bash')
+optdepends=('quickshell: the aether (Quickshell) interface'
+            'waybar: classic interface bar'
+            'rofi-wayland: classic interface launcher and menus'
+            'swaync: classic interface notifications'
+            'swww: classic interface wallpapers'
+            'hyprlock: lock screen'
+            'wlogout: classic interface power menu'
+            'hypridle: idle locking and dimming'
             'pciutils: GPU model names'
             'vulkan-tools: aether render --probe'
             'libva-utils: VA-API checks'

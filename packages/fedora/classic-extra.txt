@@ -1,0 +1,14 @@
+# Classic interface extras — "complete" mode only. Each is optional.
+btop
+fastfetch
+nvtop
+inxi
+cava
+mpv
+mpvpaper
+ffmpegthumbnailer
+wtype
+hyprpicker
+wf-recorder
+yazi
+nwg-displays

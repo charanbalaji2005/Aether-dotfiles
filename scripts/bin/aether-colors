@@ -1,0 +1,11 @@
+#!/usr/bin/bash
+# aether-colors — palette engine of the AetherOS classic interface.
+# The work is done by lib/aether/classic_colors.py (standard library only);
+# run `aether-colors --help` for the commands.
+set -euo pipefail
+LIB="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../lib" && pwd)"
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "aether-colors: python3 is required (sudo dnf install python3)" >&2
+    exit 1
+fi
+exec python3 -I -c 'import sys; sys.path.insert(0, sys.argv.pop(1)); from aether.classic_colors import main; sys.exit(main(sys.argv[1:]))' "$LIB" "$@"

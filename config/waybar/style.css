@@ -1,0 +1,4 @@
+/* Used only when Waybar is started by hand without -s. AetherOS starts it
+   with the generated style that imports your live palette instead. */
+@import "colors-fallback.css";
+@import "styles/pills.css";

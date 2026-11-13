@@ -22,7 +22,9 @@ rpm -q rpm >/dev/null 2>&1 || nodeps="--nodeps"
 rpmbuild --define "_topdir $T" $nodeps -ba "$T/SPECS/aetheros-dotfiles.spec" > "$T/build.log" 2>&1 || { tail -20 "$T/build.log"; fail "rpmbuild"; }
 rpm_file="$(ls "$T"/RPMS/noarch/*.rpm)"
 echo "PASS: rpmbuild produced $(basename "$rpm_file")${nodeps:+ (build-deps not checked: non-RPM host)}"
-rpm -qpR "$rpm_file" | grep -q '^quickshell >= 0.2.0$' || fail "missing Requires: quickshell >= 0.2.0"
+# Quickshell is optional (classic is the default interface): Suggests, not Requires.
+rpm -qp --suggests "$rpm_file" | grep -q '^quickshell >= 0.2.0$' || fail "missing Suggests: quickshell >= 0.2.0"
+rpm -qpR "$rpm_file" | grep -q '^quickshell' && fail "quickshell must not be a hard Requires"
 [ "$(rpm -qpl "$rpm_file" | grep -c -E '/tests/|/packaging/')" -eq 0 ] || fail "development files shipped"
 rpm -qplv "$rpm_file" | grep -E '/usr/share/aetheros-dotfiles/scripts/setup-symlinks.sh$' | grep -q '^-rwxr-xr-x' || fail "entry point not executable"
 echo "PASS: requires, contents and modes as expected"
