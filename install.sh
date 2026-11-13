@@ -160,7 +160,7 @@ case "$INTERFACE" in classic|aether) ;; *) echo "--interface must be classic or 
 
 if [ "$ACTION" = list-components ]; then
     for id in $(comp_list "$INTERFACE"); do
-        printf '  %-15s %s%s\n' "$id" "$(comp_label "$id")" "$(comp_preset recommended "$INTERFACE" | grep -qx "$id" && echo '  [recommended]')"
+        printf '  %-15s %s%s\n' "$id" "$(comp_label "$id")" "$(comp_preset recommended "$INTERFACE" | grep -x "$id" >/dev/null && echo '  [recommended]')"
     done
     exit 0
 fi
@@ -683,7 +683,7 @@ tui_select_components() {
     local on
     for id in $(comp_list "$INTERFACE"); do
         on=off
-        [ "$preset" = custom ] && comp_preset recommended "$INTERFACE" | grep -qx "$id" && on=on
+        [ "$preset" = custom ] && comp_preset recommended "$INTERFACE" | grep -x "$id" >/dev/null && on=on
         items+=("$id" "$(comp_label "$id")" "$on")
     done
     sel="$(ui_checklist "Components" "Space toggles · Enter confirms. Unselected parts keep your current configuration." "${items[@]}")" || return 1
@@ -743,7 +743,7 @@ Install them?" || { INSTALL_PACKAGES=0; ENABLE_COPR=0; }
             ui_yesno "Login shell" "Make zsh your login shell (sudo usermod -s /usr/bin/zsh $USER)?" && MAKE_ZSH_DEFAULT=1
         fi
     fi
-    if [[ " $COMPONENTS " == *" fonts "* ]] && ! fc-list 2>/dev/null | grep -qi "Nerd Font"; then
+    if [[ " $COMPONENTS " == *" fonts "* ]] && ! fc-list 2>/dev/null | grep -i "Nerd Font" >/dev/null; then
         ui_yesno "Icon font" "The bar and menu icons need JetBrainsMono Nerd Font (not packaged by Fedora).
 Download it from its GitHub release (SHA-256 verified) to ~/.local/share/fonts?" || INSTALL_FONTS=0
     fi

@@ -23,6 +23,7 @@ comp_fonts_install() {
 
 comp_fonts_validate() {
     command -v fc-list >/dev/null 2>&1 || { v_warn fonts "fontconfig missing: fonts can't be checked"; return 0; }
-    fc-list 2>/dev/null | grep -qi "Nerd Font" && v_pass fonts "a Nerd Font is installed (icons)" || v_warn fonts "no Nerd Font: icons show as boxes (scripts/install-fonts.sh)"
-    fc-list 2>/dev/null | grep -qi "JetBrains Mono" && v_pass fonts "JetBrains Mono installed" || v_warn fonts "JetBrains Mono missing (package: jetbrains-mono-fonts-all)"
+    # grep without -q: with pipefail, -q stops early and fc-list dies of SIGPIPE.
+    fc-list 2>/dev/null | grep -i "Nerd Font" >/dev/null && v_pass fonts "a Nerd Font is installed (icons)" || v_warn fonts "no Nerd Font: icons show as boxes (scripts/install-fonts.sh)"
+    fc-list 2>/dev/null | grep -i "JetBrains Mono" >/dev/null && v_pass fonts "JetBrains Mono installed" || v_warn fonts "JetBrains Mono missing (package: jetbrains-mono-fonts-all)"
 }

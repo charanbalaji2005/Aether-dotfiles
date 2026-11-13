@@ -13,7 +13,7 @@ comp_rofi_validate() {
     for t in "$HOME"/.config/rofi/themes/*.rasi; do
         [ -f "$t" ] || continue
         # rofi exits 0 even for a broken theme; its warning is the signal.
-        rofi -theme "$t" -dump-theme 2>&1 >/dev/null | grep -qi 'failed to parse\|error' && bad+=" $(basename "$t")"
+        [ "$(rofi -theme "$t" -dump-theme 2>&1 >/dev/null | grep -ci 'failed to parse\|error')" -gt 0 ] && bad+=" $(basename "$t")"
     done
     [ -z "$bad" ] && v_pass rofi "every theme parses" || v_fail rofi "themes that don't parse:$bad"
 }

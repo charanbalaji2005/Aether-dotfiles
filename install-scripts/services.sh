@@ -21,7 +21,9 @@ do_configure() {
     try_step "aether-interface set $INTERFACE" bash "$REPO_DIR/scripts/bin/aether-interface" set "$INTERFACE" --no-reload
     aether config migrate || warn "settings migration reported a problem (aether config validate)"
     try_step "aether hyprland compat" aether hyprland compat
-    try_step "aether graphics configure" aether graphics configure
+    # --yes: hardware.conf is AetherOS's own fragment (backed up before each write);
+    # without it the unattended run can't answer the "Write this file?" question.
+    try_step "aether graphics configure" aether graphics configure --yes
     try_step "aether theme apply" aether theme apply
     try_step "aether idle apply" aether idle apply
     bash "$REPO_DIR/scripts/build-shaders.sh" || warn "shaders not compiled locally: bundled ones are used, with a non-shader fallback"

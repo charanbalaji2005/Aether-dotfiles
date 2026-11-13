@@ -67,7 +67,7 @@ comp_normalize() {
     local iface="$1" want=" ${2//,/ } " id bad="" out=()
     for id in $want; do
         comp_exists "$id" || { bad+=" $id"; continue; }
-        comp_list "$iface" | grep -qx "$id" || bad+=" $id(not for the $iface interface)"
+        comp_list "$iface" | grep -x "$id" >/dev/null || bad+=" $id(not for the $iface interface)"
     done
     [ -z "$bad" ] || { echo "Unknown component(s):$bad. Known: $(comp_list "$iface" | tr '\n' ' ')" >&2; return 1; }
     while IFS= read -r id; do [[ "$want" == *" $id "* ]] && out+=("$id"); done < <(comp_list "$iface")

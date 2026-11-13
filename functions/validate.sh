@@ -57,10 +57,14 @@ v_duplicate_startup() {
         [ -f "$f" ] && files+=("$f")
     done
     [ ${#files[@]} -gt 0 ] || return 0
-    # The program of each exec-once (first word, path and env stripped).
-    cmds="$(grep -hE '^[[:space:]]*exec-once[[:space:]]*=' "${files[@]}" 2>/dev/null \
-        | sed -E 's/^[^=]*=[[:space:]]*//; s/^(env [^ ]+ )+//; s/^([A-Za-z_]+=[^ ]+ )+//' | awk '{print $1}' | sed 's|.*/||')"
-    dups="$(sort <<< "$cmds" | uniq -d | tr '\n' ' ')"
+    # Each exec-once command, whitespace-normalised: two identical lines start
+    # the same thing twice (different subcommands of one program don't).
+    local lines
+    lines="$(grep -hE '^[[:space:]]*exec-once[[:space:]]*=' "${files[@]}" 2>/dev/null \
+        | sed -E 's/^[^=]*=[[:space:]]*//; s/[[:space:]]+#.*$//; s/[[:space:]]+/ /g; s/ $//')"
+    dups="$(sort <<< "$lines" | uniq -d | awk 'NF' | paste -sd ';' - | sed 's/;/ ; /g')"
+    # The program names, for the service check below.
+    cmds="$(sed -E 's/^(env [^ ]+ )+//; s/^([A-Za-z_]+=[^ ]+ )+//' <<< "$lines" | awk '{print $1}' | sed 's|.*/||')"
     [ -z "${dups// }" ] && v_pass system "no program is started twice by exec-once" || v_warn system "started by more than one exec-once: $dups"
     local unit prog
     for unit in waybar swaync hypridle; do
