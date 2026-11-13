@@ -53,7 +53,7 @@ shell	?fzf
 shell	?zoxide
 themes	adw-gtk3-theme
 themes	papirus-icon-theme
-themes	adwaita-gtk2-theme
+themes	?adwaita-gtk2-theme
 themes	gtk-murrine-engine
 themes	nwg-look
 themes	qt5ct

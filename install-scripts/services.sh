@@ -34,7 +34,17 @@ do_configure() {
     fi
 }
 
+# No login manager at all (minimal installs): SDDM, when the user agreed.
+# It is enabled, not started — starting it would end the console session.
+enable_sddm() {
+    [ "${INSTALL_SDDM:-0}" -eq 1 ] && [ "${DET_DM:-none}" = none ] || return 0
+    command -v sddm >/dev/null 2>&1 || { warn "SDDM was not installed: start Hyprland from a console with: Hyprland"; return 0; }
+    run sudo systemctl enable sddm.service && run sudo systemctl set-default graphical.target \
+        && ok "SDDM enabled: the login screen appears at your next boot (choose Hyprland)"
+}
+
 do_services() {
+    enable_sddm
     step "systemd user services"
     local units=() u
     for u in "$REPO_DIR"/system/systemd/*.service; do

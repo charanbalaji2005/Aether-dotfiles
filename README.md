@@ -22,10 +22,28 @@ Two interfaces:
 
 ## Install (Fedora 41+)
 
+One command — downloads AetherOS and opens the installer:
+
+```sh
+sh <(curl -fsSL https://raw.githubusercontent.com/charanbalaji2005/Aether-dotfiles/release-final/auto-install.sh)
+```
+
+Everything, with no questions (packages, the Hyprland COPR, fonts, zsh, Bluetooth):
+
+```sh
+sh <(curl -fsSL https://raw.githubusercontent.com/charanbalaji2005/Aether-dotfiles/release-final/auto-install.sh) --auto
+```
+
+Or clone it yourself:
+
 ```sh
 git clone -b release-final https://github.com/charanbalaji2005/Aether-dotfiles ~/Aether-dotfiles
 cd ~/Aether-dotfiles && ./install.sh
 ```
+
+Fedora 44 doesn't ship Hyprland: the installer enables the
+[sdegler/hyprland](https://copr.fedorainfracloud.org/coprs/sdegler/hyprland/) COPR for it
+(asked first, or agreed to by `--auto`).
 
 The **onboarding installer** shows your system (CPU, GPUs and drivers, memory, display, Hyprland
 and Waybar versions), lets you pick components — *Recommended*, *Select all*, *Custom* — asks

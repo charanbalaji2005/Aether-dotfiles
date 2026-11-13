@@ -25,6 +25,9 @@ wanted_packages() {
             [ "$INTERFACE" = classic ] && read_pkgs "$REPO_DIR/packages/fedora/classic-extra.txt" ;;
     esac
     detect_gpu_packages
+    # A login manager only when there is none (asked, or --auto).
+    [ "${INSTALL_SDDM:-0}" -eq 1 ] && [ "${DET_DM:-none}" = none ] && echo sddm
+    return 0
 }
 
 # Sort the wanted packages into installed / available / missing.
@@ -156,6 +159,10 @@ install_packages() {
         echo "  $pkg needs the third-party COPR repository '$copr'."
         echo "  COPR repositories are built by community members, not by Fedora."
         if [ "$ENABLE_COPR" -eq 1 ] || confirm_explicit "Enable COPR $copr?"; then
+            # Minimal Fedora installs may lack the copr command (dnf5-plugins / dnf-plugins-core).
+            if [ "$DRY" -eq 0 ] && ! "$DNF" copr --help >/dev/null 2>&1; then
+                sudo "$DNF" install -y "$(dnf_is_v5 && echo dnf5-plugins || echo dnf-plugins-core)"
+            fi
             run sudo "$DNF" copr enable -y "$copr" && enabled_any=1
             state_set "copr" "$copr"
         fi

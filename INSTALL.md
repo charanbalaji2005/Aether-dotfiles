@@ -20,15 +20,31 @@ login (**Ctrl+Alt+F3**); see [RECOVERY.md](RECOVERY.md).
 
 ## 2. Install with the onboarding installer
 
+One command (like JaKooLit's installers):
+
+```sh
+sh <(curl -fsSL https://raw.githubusercontent.com/charanbalaji2005/Aether-dotfiles/release-final/auto-install.sh)
+```
+
+`auto-install.sh` installs git if needed, clones the `release-final` branch to
+`~/.local/share/aether-dotfiles` (your desktop runs from there afterwards — don't delete it),
+shows the exact commit and starts `./install.sh`. Add `--auto` to install everything
+recommended without a single question: all packages, the COPR repositories they need, the Nerd
+Font, AetherOS's `~/.zshrc` (yours is moved aside), zsh as login shell, Bluetooth, and SDDM if
+the machine has no login manager. sudo asks for your password once.
+
+Or clone it yourself:
+
 ```sh
 git clone -b release-final https://github.com/charanbalaji2005/Aether-dotfiles ~/Aether-dotfiles
 cd ~/Aether-dotfiles
 ./install.sh
 ```
 
-Or with only the installer file: download `install.sh` and run `bash install.sh`. It clones the
-repository's `release-final` branch over HTTPS to `~/.local/share/aether-dotfiles`, shows the
-exact commit (and its signature when it has one) and runs that copy only after you say yes.
+**Fedora 44 ships no Hyprland.** Hyprland, hypridle, hyprlock, the portal, polkit agent,
+hyprsunset, hyprpicker, hyprpaper, swww and nwg-look come from the
+[sdegler/hyprland](https://copr.fedorainfracloud.org/coprs/sdegler/hyprland/) COPR, which the
+installer enables after asking (or with `--auto` / `--enable-copr`).
 
 What you see:
 
@@ -102,6 +118,7 @@ Dialogs use whiptail (`newt`, installed on Fedora). `./install.sh --no-tui` (or
 | `--no-fonts` | don't offer the Nerd Font download |
 | `--restart` | ignore the saved progress of an interrupted install |
 | `--no-tui` | numbered prompts instead of dialog windows |
+| `--auto` | everything recommended, no questions: packages + needed COPRs, Nerd Font, `~/.zshrc` (yours moved aside), zsh login shell, Bluetooth, SDDM when there is no login manager |
 
 ## 4. What the installer does
 

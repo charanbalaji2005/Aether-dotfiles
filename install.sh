@@ -31,6 +31,9 @@
 #   --restart           ignore the saved progress of an interrupted install
 #   --no-fonts          don't offer to download JetBrainsMono Nerd Font
 #   --no-tui            numbered prompts instead of dialog windows (also: AETHER_UI=plain)
+#   --auto              install everything recommended without questions: packages, the COPR
+#                       repositories they need, your ~/.zshrc replaced (yours moved aside), zsh
+#                       as login shell, Bluetooth on, SDDM if you have no login manager
 #
 # What it never does: run as root, change SELinux/firewall/Secure Boot, touch
 # the bootloader or kernel, install or replace GPU drivers, replace your display
@@ -109,9 +112,12 @@ ARCHIVE=""
 ENABLE_BLUETOOTH=""     # "": ask, 1: yes, 0: no
 ENABLE_SDDM_THEME=0
 UPDATE_PACKAGES=0
+INSTALL_SDDM=0          # 1: install and enable SDDM (only when there is no login manager)
+MAKE_ZSH_DEFAULT=0      # 1: make zsh the login shell
+AUTO=0
 COMPONENTS=""
 
-usage() { sed -n '5,37p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '5,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -135,6 +141,7 @@ while [ $# -gt 0 ]; do
         --with-zshrc) WITH_ZSHRC=1 ;;
         --restart) RESTART=1 ;;
         --no-tui) export AETHER_UI=plain ;;
+        --auto) AUTO=1; ASSUME_YES=1; ENABLE_COPR=1; WITH_ZSHRC=1; ENABLE_BLUETOOTH=1; MAKE_ZSH_DEFAULT=1; INSTALL_SDDM=1 ;;
         -h|--help) usage; exit 0 ;;
         --version) echo "AetherOS Dotfiles $AETHER_VERSION — © 2026 Neelampalli Charan Balaji"; exit 0 ;;
         *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
@@ -148,6 +155,7 @@ if [ -z "$INTERFACE" ]; then
     case "$INTERFACE" in classic|aether) ;; *) INTERFACE=classic ;; esac
 fi
 case "$INTERFACE" in classic|aether) ;; *) echo "--interface must be classic or aether" >&2; exit 2 ;; esac
+[ "$AUTO" -eq 1 ] && [ -z "$ACTION" ] && ACTION=install
 [ "$ACTION" = "dry-run" ] && DRY=1
 
 if [ "$ACTION" = list-components ]; then
@@ -687,6 +695,8 @@ needs_sudo() {
     [ "$INSTALL_PACKAGES" -eq 1 ] && [ ${#PKG_AVAILABLE[@]} -gt 0 ] && return 0
     [ "$ENABLE_COPR" -eq 1 ] && [ -n "$(coprs_needed)" ] && return 0
     [ "${ENABLE_BLUETOOTH:-0}" = 1 ] && return 0
+    [ "$MAKE_ZSH_DEFAULT" -eq 1 ] && return 0
+    [ "$INSTALL_SDDM" -eq 1 ] && return 0
     [ "$ENABLE_SDDM_THEME" -eq 1 ]
 }
 
@@ -704,25 +714,34 @@ tui_install() {
         return 0
     fi
     # Every question is asked now, so the installation itself runs unattended.
-    if [ "$INSTALL_PACKAGES" -eq 1 ] && [ ${#PKG_AVAILABLE[@]} -gt 0 ]; then
-        if ui_yesno "Packages" "${#PKG_AVAILABLE[@]} packages will be installed from your enabled Fedora repositories (sudo dnf install):
-
-$(printf '%s ' "${PKG_AVAILABLE[@]}" | fold -s -w 70)
-
-Install them?"; then ASSUME_YES=1; else INSTALL_PACKAGES=0; fi
-    fi
-    local coprs; coprs="$(coprs_needed)"
+    local coprs extra=""
+    coprs="$(coprs_needed)"
     if [ "$INSTALL_PACKAGES" -eq 1 ] && [ -n "$coprs" ]; then
-        ui_yesno "Community repositories (COPR)" "These packages aren't in your enabled repositories: ${PKG_MISSING[*]}
+        if ui_yesno "Repositories for Hyprland (COPR)" "Your Fedora repositories don't have: ${PKG_MISSING[*]}
 
-They are available from these COPR repositories, built by community members (not Fedora):
-$(sed 's/^/  • /' <<< "$coprs")
+They come from these COPR repositories (community-built, not Fedora's own):
+$(sed 's|^|  • https://copr.fedorainfracloud.org/coprs/|' <<< "$coprs")
 
-Enable them?" no && ENABLE_COPR=1
+Without them the desktop can't run. Enable them?"; then
+            ENABLE_COPR=1
+            extra=" plus from COPR: ${PKG_MISSING[*]}"
+        fi
     fi
-    if [[ " $COMPONENTS " == *" shell "* ]] && [ -e "$HOME/.zshrc" ] && [[ "$(readlink -f "$HOME/.zshrc")" != "$REPO_DIR"/* ]]; then
-        ui_yesno "Your ~/.zshrc" "You already have a ~/.zshrc. Replace it with AetherOS's?
-(Yours is moved to ~/.zshrc.bak.<time>, never deleted.) No keeps yours." no && WITH_ZSHRC=1
+    if [ "$INSTALL_PACKAGES" -eq 1 ] && { [ ${#PKG_AVAILABLE[@]} -gt 0 ] || [ -n "$extra" ]; }; then
+        ui_yesno "Packages" "These will be installed with sudo dnf install:
+
+$(printf '%s ' "${PKG_AVAILABLE[@]}" | fold -s -w 70)$extra
+
+Install them?" || { INSTALL_PACKAGES=0; ENABLE_COPR=0; }
+    fi
+    if [[ " $COMPONENTS " == *" shell "* ]]; then
+        if [ -e "$HOME/.zshrc" ] && [[ "$(readlink -f "$HOME/.zshrc")" != "$REPO_DIR"/* ]]; then
+            ui_yesno "Your ~/.zshrc" "Use AetherOS's ~/.zshrc? Yours is moved to ~/.zshrc.bak.<time>
+(never deleted; ./restore.sh puts it back). No keeps yours." && WITH_ZSHRC=1
+        fi
+        if [ "$(getent passwd "$USER" | cut -d: -f7)" != "$(command -v zsh 2>/dev/null || echo /usr/bin/zsh)" ]; then
+            ui_yesno "Login shell" "Make zsh your login shell (sudo usermod -s /usr/bin/zsh $USER)?" && MAKE_ZSH_DEFAULT=1
+        fi
     fi
     if [[ " $COMPONENTS " == *" fonts "* ]] && ! fc-list 2>/dev/null | grep -qi "Nerd Font"; then
         ui_yesno "Icon font" "The bar and menu icons need JetBrainsMono Nerd Font (not packaged by Fedora).
@@ -731,10 +750,16 @@ Download it from its GitHub release (SHA-256 verified) to ~/.local/share/fonts?"
     if [[ " $COMPONENTS " == *" bluetooth "* ]] && ! systemctl is-enabled bluetooth.service >/dev/null 2>&1; then
         if ui_yesno "Bluetooth" "Enable and start the Bluetooth service (sudo systemctl enable --now bluetooth)?"; then ENABLE_BLUETOOTH=1; else ENABLE_BLUETOOTH=0; fi
     fi
-    if [[ " $COMPONENTS " == *" login-manager "* ]] && [ "$DET_DM" = sddm ]; then
-        ui_yesno "Login screen" "Install the AetherOS SDDM theme? It is copied to /usr/share/sddm/themes/aether
-and selected by /etc/sddm.conf.d/10-aetheros.conf (delete it to undo)." no && ENABLE_SDDM_THEME=1
+    if [ "$DET_DM" = none ] && [ "$INSTALL_PACKAGES" -eq 1 ]; then
+        ui_yesno "Login screen" "You have no graphical login manager, so Hyprland would have to be started
+from a text console. Install SDDM and enable it (it starts at your next boot)?" && INSTALL_SDDM=1
     fi
+    if [[ " $COMPONENTS " == *" login-manager "* ]] && { [ "$DET_DM" = sddm ] || [ "$INSTALL_SDDM" -eq 1 ]; }; then
+        ui_yesno "Login screen theme" "Install the AetherOS SDDM theme? It is copied to /usr/share/sddm/themes/aether
+and selected by /etc/sddm.conf.d/10-aetheros.conf (delete it to undo)." && ENABLE_SDDM_THEME=1
+    fi
+    # Every answer is now in its own setting; nothing is asked during the run.
+    ASSUME_YES=1
     local summary
     summary="Components ($(wc -w <<< "$COMPONENTS")): $(echo "$COMPONENTS" | sed 's/ /, /g')
 

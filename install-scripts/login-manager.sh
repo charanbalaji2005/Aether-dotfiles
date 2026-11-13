@@ -14,7 +14,7 @@ SDDM_THEME_DIR=/usr/share/sddm/themes/aether
 SDDM_DROPIN=/etc/sddm.conf.d/10-aetheros.conf
 
 comp_login_manager_install() {
-    if [ "${DET_DM:-none}" != sddm ]; then
+    if [ "${DET_DM:-none}" != sddm ] && ! { [ "${INSTALL_SDDM:-0}" -eq 1 ] && command -v sddm >/dev/null 2>&1; }; then
         info "Login manager: ${DET_DM:-none} — only SDDM can be themed; it was left exactly as it is."
         return 0
     fi
