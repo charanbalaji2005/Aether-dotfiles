@@ -10,6 +10,12 @@
 
 set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Never touch the desktop this runs from: with Hyprland, Wayland and the
+# session bus in reach, an install in a temporary HOME restarts the real
+# Waybar from that HOME (which is then deleted, and the bar dies).
+unset HYPRLAND_INSTANCE_SIGNATURE WAYLAND_DISPLAY DISPLAY
+XDG_RUNTIME_DIR="$(mktemp -d)"
+export XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/no-bus"
 if [ "$(id -u)" -eq 0 ]; then echo "SKIP: install.sh refuses root by design; run this test as a normal user"; exit 0; fi
 
 T="$(mktemp -d)"
