@@ -1,0 +1,26 @@
+// AetherOS look "Home": a floating top bar and a macOS-style dock. The island is a
+// separate Waybar (islands/home.jsonc) shown only while something is happening
+// (time pill → a card with art, title, artist, controls and events while music
+// plays; a level bar on volume/brightness keys). The dock is not a Waybar: the
+// marker below makes aether-waybar start the native dock (lib/aether/dock_app.py:
+// running-app dots, magnification, auto-hide; customise with aether-dock).
+// aether-dock: native
+[
+    {
+        "include": ["~/.config/waybar/modules.jsonc"],
+        "name": "home-top",
+        "layer": "top",
+        "position": "top",
+        "height": 35,
+        "margin-top": 6,
+        "margin-left": 10,
+        "margin-right": 10,
+        "spacing": 4,
+        "modules-left": ["custom/edit-look", "custom/launch-apps-top", "hyprland/workspaces#numbers", "hyprland/window"],
+        // The centre belongs to the Dynamic Island (Quickshell, see
+        // scripts/dynamic-island.sh); with the island off in Settings the date
+        // and time sit there instead, otherwise beside the tray.
+        "modules-center": ["custom/island-clock#center"],
+        "modules-right": ["group/hardware", "custom/weather", "network", "bluetooth", "pulseaudio", "pulseaudio#mic", "battery", "custom/nightlight", "tray", "custom/keys", "custom/cc", "custom/notification", "custom/island-clock", "custom/power"]
+    }
+]

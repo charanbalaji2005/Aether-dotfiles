@@ -11,6 +11,17 @@ ColumnLayout {
     spacing: Metrics.spaceLg
 
     SettingRow {
+        label: "Lock screen"
+        description: Config.lock.backend === "hyprlock"
+            ? "hyprlock handles locking (if it isn't installed, the AetherOS lock screen is used)"
+            : "The AetherOS lock screen: ext-session-lock + PAM. Its API use is verified against Quickshell's source; runtime unlock still needs your hardware check (docs/HARDWARE.md)."
+        SegmentedControl {
+            options: [{ value: "aether", label: "AetherOS" }, { value: "hyprlock", label: "hyprlock" }]
+            current: Config.lock.backend
+            onSelected: function(v) { Config.lock.backend = v; }
+        }
+    }
+    SettingRow {
         label: "Clock"
         ChipGroup {
             options: [{ value: "digital", label: "Digital" }, { value: "large", label: "Stacked" }, { value: "split", label: "Split" }, { value: "analog", label: "Analog" }]

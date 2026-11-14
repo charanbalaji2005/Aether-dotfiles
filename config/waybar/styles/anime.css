@@ -1,0 +1,31 @@
+/* Look "Anime Dream": soft translucent capsules with a dusk gradient on the
+   active workspace and clock — gentle, wallpaper-first. */
+@import "_base.css";
+* { font-size: 12px; }
+window#waybar { background: transparent; color: @text; }
+#custom-menu, #workspaces, #window, #clock, #custom-weather, #mpris, #tray, #hardware,
+#quick, #network, #bluetooth, #pulseaudio, #pulseaudio.mic, #backlight, #battery,
+#custom-notification, #custom-power, #submap {
+    background: alpha(@bg, 0.55);
+    border: 1px solid alpha(@fg, 0.14);
+    border-radius: 16px;
+    padding: 0 12px;
+    margin: 3px 0;
+    color: @text;
+}
+#custom-menu { background: linear-gradient(120deg, @accent, @accent2); color: @on_accent; font-size: 15px; }
+#workspaces { padding: 0 4px; }
+#workspaces button { color: alpha(@text, 0.55); padding: 0 6px; border-radius: 12px; margin: 3px 1px; }
+#workspaces button.active {
+    background: linear-gradient(120deg, @accent, @accent2);
+    color: @on_accent;
+    padding: 0 14px;
+}
+#workspaces button.empty { color: alpha(@text, 0.30); }
+#workspaces button:hover { background: alpha(@accent, 0.25); }
+#hardware > *, #quick > * { background: transparent; border: none; margin: 0; padding: 0 5px; }
+#clock { background: linear-gradient(120deg, alpha(@accent, 0.85), alpha(@accent2, 0.85)); color: @on_accent; font-weight: 800; }
+#window { color: @subtext; }
+window#waybar.empty #window { background: transparent; border-color: transparent; }
+#custom-power { color: @urgent; }
+#tray.empty { background: transparent; border: none; padding: 0; margin: 0; }

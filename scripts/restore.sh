@@ -47,7 +47,7 @@ if [ "${2:-}" != "--yes" ]; then
     fi
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
 # Strictly allowlisted managed destinations (relative to $HOME): the shared
 # target list plus AetherOS's own state directory.

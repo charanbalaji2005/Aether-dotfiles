@@ -1,0 +1,12 @@
+# AetherOS classic — wallust (https://explosion-mental.codeberg.page/wallust/).
+# wallust only produces the palette; aether-colors reads it and themes
+# every application from it, so there is one template here.
+# aether-colors calls: wallust run -s -q -p dark16|light16 <wallpaper>
+
+backend = "fastresize"
+color_space = "lch"
+palette = "dark16"
+check_contrast = true
+
+[templates]
+aether = { template = "aether.json", target = "~/.config/aether-shell/classic/colors/wallust.json" }

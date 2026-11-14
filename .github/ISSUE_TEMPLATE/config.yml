@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/OWNER/aetheros-dotfiles/security/advisories/new
+    url: https://github.com/charanbalaji2005/Aether-dotfiles/security/advisories/new
     about: Please report security issues privately (see SECURITY.md).

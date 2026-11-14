@@ -1,0 +1,36 @@
+{
+    "label" : "lock",
+    "action" : "aether-powermenu run lock",
+    "text" : "Lock",
+    "keybind" : "l"
+}
+{
+    "label" : "logout",
+    "action" : "aether-powermenu run logout",
+    "text" : "Log out",
+    "keybind" : "e"
+}
+{
+    "label" : "suspend",
+    "action" : "aether-powermenu run suspend",
+    "text" : "Suspend",
+    "keybind" : "u"
+}
+{
+    "label" : "hibernate",
+    "action" : "aether-powermenu run hibernate",
+    "text" : "Hibernate",
+    "keybind" : "h"
+}
+{
+    "label" : "reboot",
+    "action" : "aether-powermenu run reboot",
+    "text" : "Reboot",
+    "keybind" : "r"
+}
+{
+    "label" : "shutdown",
+    "action" : "aether-powermenu run shutdown",
+    "text" : "Shut down",
+    "keybind" : "s"
+}

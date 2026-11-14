@@ -88,13 +88,17 @@ Singleton {
     // ── Actions (all validated: addresses come from our own snapshot) ──
     function _known(address) { return root.clients.some(function(c) { return c.address === address; }); }
 
+    // Through `hyprctl` (the AetherOS shim on PATH): Hyprland 0.57+ takes Lua
+    // dispatch arguments, which a raw "focuswindow address:…" is not.
     function focus(address) {
         if (!_known(address)) return;
-        HyprlandService.dispatch("focuswindow address:" + address);
+        Quickshell.execDetached(["hyprctl", "dispatch", "focuswindow", "address:" + address]);
+        debounce.restart();
     }
     function close(address) {
         if (!_known(address)) return;
-        HyprlandService.dispatch("closewindow address:" + address);
+        Quickshell.execDetached(["hyprctl", "dispatch", "closewindow", "address:" + address]);
+        debounce.restart();
     }
     function moveToWorkspace(address, workspaceId, follow) {
         const ws = parseInt(workspaceId);

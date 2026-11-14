@@ -59,6 +59,9 @@ echo
 # Directory imports for every shell type that is used.
 python3 "$REPO_DIR/tests/shell/qml_imports.py" "$SHELL_DIR" || failed=1
 
+# No object assigns a property/handler twice (QML refuses to load it).
+python3 "$REPO_DIR/tests/shell/qml_duplicates.py" "$SHELL_DIR" || failed=1
+
 if [ "$failed" -eq 0 ]; then
     echo "PASS: all ${#QML_FILES[@]} QML files structurally sound"
 else

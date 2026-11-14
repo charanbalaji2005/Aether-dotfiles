@@ -197,3 +197,29 @@ class FakeNvml:
     def close(self):
         self.closed += 1
 
+
+
+class NvmlFailures(unittest.TestCase):
+    def test_nvml_failure_reason_is_reported_not_zeroes(self):
+        s = fixtures.nvidia_desktop()
+        self.addCleanup(s.cleanup)
+        s.bins.discard("nvidia-smi")
+
+        def mismatch():
+            raise RuntimeError("nvmlInit failed (Driver/library version mismatch) — reboot after a driver update")
+        sm = telemetry.Sampler(s.ctx())
+        sm.nvml_factory = mismatch
+        g = sm.sample()["gpus"][0]
+        self.assertIsNone(g["usage"])
+        self.assertIsNone(g["vramUsed"])
+        self.assertIn("version mismatch", g["note"])
+
+    def test_close_releases_the_nvml_session(self):
+        s = fixtures.nvidia_desktop()
+        self.addCleanup(s.cleanup)
+        fake = FakeNvml()
+        sm = telemetry.Sampler(s.ctx())
+        sm.nvml_factory = lambda: fake
+        sm.sample()
+        sm.close()
+        self.assertEqual(fake.closed, 1)

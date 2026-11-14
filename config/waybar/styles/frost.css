@@ -1,0 +1,23 @@
+/* Look "Frost": cool grey frosted glass — a translucent bar, rounded capsules
+   for each group, boxed workspace numbers. Hyprland blurs behind it. */
+@import "_base.css";
+window#waybar { background: transparent; color: @text; }
+#custom-fedora, #workspaces, #mpris, #clock, #custom-weather, #tray, #cpu, #memory, #network,
+#bluetooth, #pulseaudio, #battery, #custom-notification, #custom-power {
+    background: alpha(@surface2, 0.72);
+    border: 1px solid alpha(@fg, 0.10);
+    border-radius: 10px;
+    padding: 0 11px;
+    margin: 3px 0;
+    color: @text;
+}
+#custom-fedora { font-size: 14px; padding: 0 12px; }
+#workspaces { padding: 0 3px; }
+#workspaces button { color: @muted; padding: 0 7px; margin: 3px 2px; border-radius: 6px; }
+#workspaces button.active { background: alpha(@fg, 0.85); color: @bg; }
+#workspaces button.empty { color: alpha(@muted, 0.5); }
+#workspaces button:hover { background: alpha(@fg, 0.12); }
+#clock { padding: 0 16px; font-weight: 700; }
+#mpris { color: @subtext; }
+#custom-power:hover, #custom-notification:hover, #network:hover, #pulseaudio:hover { background: alpha(@fg, 0.16); }
+#tray.empty { background: transparent; border: none; padding: 0; margin: 0; }

@@ -89,9 +89,16 @@ Scope {
             WindowService.focus(target.address);
             return false;
         }
-        if (item.app) { ApplicationService.launch(item.app); return true; }
+        if (item.app) {
+            // Still starting from an earlier click: don't open a duplicate.
+            if (!newInstance && Date.now() - (root._launchedAt[item.app.id] || 0) < 4000) return false;
+            root._launchedAt[item.app.id] = Date.now();
+            ApplicationService.launch(item.app);
+            return true;
+        }
         return false;
     }
+    property var _launchedAt: ({})
 
     function moveFavorite(fromId, toIndex) {
         const favs = (Config.launcher.favorites || []).slice();

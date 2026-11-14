@@ -47,7 +47,8 @@ Singleton {
         if (root._code < 0 || !root._outDone || !root._errDone || !root._current) return;
         const job = root._current;
         let data = null;
-        try { data = JSON.parse(root._outText); } catch (e) {}
+        // Non-JSON output is reported to the caller as a failure below (ok=false).
+        try { data = JSON.parse(root._outText); } catch (e) { data = null; }
         const b = Object.assign({}, root.busy); delete b[job.tag]; root.busy = b;
         const ok = root._code === 0 && data !== null;
         if (job.cb) {

@@ -70,23 +70,33 @@ Scope {
 
                         GlassPanel { anchors.fill: parent; radius: Metrics.radiusLg; elevation: 2; focused: WidgetService.editing && drag.active }
 
+                        // Built-ins always; third-party only when allowed, trusted
+                            // at their current digest (backend decides: meta.loadable)
+                            // and never in safe mode.
+                        readonly property bool allowed: card.meta !== null && card.meta.loadable === true
+                            && (card.meta.source === "builtin" || !PerformanceService.safeMode)
                         Loader {
                             id: loader
                             anchors.fill: parent
-                            active: card.meta !== null && card.meta.valid
+                            active: card.allowed
                             source: active ? "file://" + card.meta.path + "/" + card.meta.entry : ""
                             onLoaded: {
                                 const api = apiComponent.createObject(item, { permissions: card.meta.permissions || [] });
                                 if ("api" in item) item.api = api;
                             }
-                            onStatusChanged: if (status === Loader.Error) Logger.warn("WidgetLayer", "Widget " + card.modelData.widget + " failed to load")
+                            onStatusChanged: {
+                                if (status === Loader.Error) Logger.warn("WidgetLayer", "Widget " + card.modelData.widget + " failed to load");
+                                else if (status === Loader.Ready) Logger.info("WidgetLayer", "Widget " + card.modelData.widget + " (" + card.meta.source + ") activated");
+                            }
                         }
                         Text {
                             anchors.centerIn: parent; width: parent.width - 20
-                            visible: !card.meta || !card.meta.valid || loader.status === Loader.Error
+                            visible: !card.allowed || loader.status === Loader.Error
                             horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap
                             text: !card.meta ? "Widget “" + card.modelData.widget + "” is not installed"
                                 : !card.meta.valid ? "Blocked: " + (card.meta.problems || []).slice(0, 2).join("; ")
+                                : PerformanceService.safeMode && card.meta.source !== "builtin" ? "Third-party widgets are off in safe mode"
+                                : !card.meta.loadable ? "Not loaded: " + card.meta.blockedReason
                                 : "This widget failed to load (see aether logs --shell)"
                             color: Colors.textMuted; font.family: Typography.family; font.pixelSize: Typography.sizeXs
                         }
@@ -132,7 +142,7 @@ Scope {
                         spacing: Metrics.spaceSm
                         Text { text: "Add:"; color: Colors.textSecondary; font.family: Typography.family; font.pixelSize: Typography.sizeSm }
                         ChipGroup {
-                            options: WidgetService.catalog.filter(function(w) { return w.valid; }).map(function(w) { return { value: w.id, label: w.name }; })
+                            options: WidgetService.catalog.filter(function(w) { return w.loadable; }).map(function(w) { return { value: w.id, label: w.name }; })
                             current: ""
                             onSelected: function(v) { WidgetService.place(v, win.modelData.name); }
                         }

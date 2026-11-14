@@ -61,6 +61,29 @@ llvmpipe, with behaviour and pixel assertions on captured frames.
 | `tst_components.qml` | 16 | battery families and state colours, gauges, switch/slider binding safety and keyboard |
 | `tst_icons.qml` | 64 | every one of 62 glyphs draws; an empty control cell stays black |
 
+## Classic interface run (Unreleased)
+
+`bash tests/run-all.sh` as an unprivileged user (Ubuntu 24.04 sandbox, Python 3.12, PySide6
+6.12, GTK 3 via python3-gi, Rofi 1.7.5 under Xvfb, shellcheck 0.11): **18 suites — 17 passed,
+0 failed, 1 skipped** (RPM build: no rpmbuild on the host).
+
+| Suite | Result | What it proves |
+|---|---|---|
+| `classic/test_classic_interface.sh` | PASS | setup links the classic interface and selects it; a re-run keeps an existing choice; switching both ways; 7 Waybar layouts parse and use only defined modules; every Waybar/SwayNC/Wlogout stylesheet passes **GTK 3's own parser** with the generated palette (and the check rejects a broken sheet); every Rofi theme and `config.rasi` pass **Rofi**, which also picks up the generated palette; SwayNC/Wlogout/Pyprland/wallust configs parse; every `aether-*` command the configs call exists; key reference (116 rows); calculator refuses code; weather makes no request by default; filenames with spaces |
+| `python` (incl. `test_classic_colors.py`) | PASS — 223 tests | 17 new: contrast of every preset in both modes, histogram and wallust palettes, template formats, init/toggle/fallback behaviour |
+| `hyprland/test_config_syntax.sh` | PASS | classic 115 / aether 93 keybinds without conflicts; interface fragments sourced in the right order; hyprlock/hypridle never sourced; rule files cover the same 22 namespaces and 13 window patterns |
+| `integration/test_installer.sh` | PASS | also: an existing `~/.config/waybar` is moved aside and restored by `--rollback`; `rofi-wayland\|rofi` picks the available one; unavailable packages are reported; the plan follows `--interface` |
+| `shell/runtime` | PASS — 186 checks | after the fixture fix above |
+
+Looks (second run, same result: 17 passed, 0 failed, 1 skipped): 14 Waybar layouts and 11
+styles parse; 8 looks reference existing parts and `aether-look apply` records all of them.
+Beyond the suite, every look was rendered by real Waybar 0.10 on headless Sway and every
+launcher by real Rofi 1.7.5 under Xvfb (docs/images/); that rendering found and fixed the
+launcher banner that never showed and blank default workspace buttons.
+
+Still needs a live Hyprland session: everything visible in the classic interface (see the
+checklist at the end of [docs/CLASSIC_INTERFACE.md](docs/CLASSIC_INTERFACE.md)).
+
 ## Not tested — needs a live session or real hardware
 
 Run the checklist in [docs/HARDWARE.md](docs/HARDWARE.md#validation-checklist-needed-before-calling-a-release-100)

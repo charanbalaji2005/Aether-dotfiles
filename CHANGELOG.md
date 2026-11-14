@@ -1,7 +1,167 @@
 # Changelog
 
-Dates reflect when each phase was built, not calendar releases — this hasn't been tagged/released
-yet (see top-level `PROGRESS.md` for current status before treating anything below as "shipped").
+Dates reflect when each phase was built. Known limits of a release are listed in
+[README.md](README.md#status) and [docs/HARDWARE.md](docs/HARDWARE.md).
+
+## 1.0.0 — 2026-11-14
+
+### Added — installer
+- **Onboarding installer** (`./install.sh` on a terminal): logo, version and copyright, a
+  system summary (distribution, kernel, CPU, GPUs and their drivers, memory, display, desktop,
+  Hyprland/Waybar/Quickshell versions, login manager, disk), prerequisites, and a main menu —
+  Start installation · Update · Restore previous configuration · Installation information.
+  Dialogs use whiptail; `--no-tui`/`AETHER_UI=plain` gives numbered prompts.
+- **First-run support screen** with the repository link; it can open the repository in the
+  browser or star it with a signed-in GitHub CLI — only when chosen. Shown once.
+- **Components**: Hyprland, Waybar, Dynamic Island, macOS Dock, Rofi Launchpad, Kitty, Zsh,
+  GTK themes and icons, wallpapers, fonts, notifications, Bluetooth, audio, SDDM login theme,
+  application configs (and the Quickshell shell for the aether interface). Presets:
+  Recommended, Select all, Deselect all, Custom. Without menus: `--components a,b`,
+  `--preset`, `--list-components`. Unselected components keep your existing configuration.
+- **Packages per component** (`packages/fedora/components.tsv`, `?optional`, `a|b`
+  alternatives); optional GPU userspace helpers only for a driver already in use — drivers are
+  never installed or replaced.
+- **Live progress**: numbered steps `[n/N]`, spinner and elapsed time, download bar with
+  percentage, speed and size (DNF, git, curl), the latest log lines, ✔/✖ per step; every
+  question is asked before the run so it proceeds unattended.
+- **Preservation**: keybinds from a replaced Hyprland config are saved (commented out) in
+  `~/.config/aether-shell/hypr/user.conf`, its scripts in
+  `~/.config/aether-shell/user/hypr-scripts`, replaced wallpapers in `~/Pictures/Wallpapers`.
+- **Validation and report**: per-component checks (Hyprland, Waybar layouts, Rofi themes,
+  Quickshell, SwayNC, required programs), broken symlinks, duplicate startup (exec-once,
+  enabled units, running daemons) → `~/.local/state/aether/reports/`.
+- **Final screen**: installed / skipped / failed components, backup, log and report; restart
+  the Hyprland desktop, reboot (asked, never automatic), view the log or report.
+- `update.sh` and `restore.sh` at the top level; `install.sh --restore [--archive FILE]`.
+- Run as a single downloaded file, the installer clones the repository's `release-final`
+  branch over HTTPS, shows the exact commit (and its signature, if any) and runs it only
+  after an explicit yes.
+- `~/.config/aether-shell/hypr/user.conf`: your own Hyprland settings, sourced last.
+
+### Changed — installer
+- Steps are isolated: a failing component is reported and the rest still installs; an
+  interrupted run resumes per component.
+- `setup-symlinks.sh --only GROUPS`; updates and `aether repair` re-link the saved selection.
+- The Quickshell build toolchain is planned only for the Quickshell shell.
+- License notice: copyright Neelampalli Charan Balaji, GPL-3.0-or-later (the contradictory
+  "All rights reserved" was removed).
+
+### Added — classic interface
+- **Classic interface** (now the default; `aether-interface set aether` restores the Quickshell
+  shell): Waybar (7 layouts, 4 styles), Rofi launcher and menus (Wi-Fi, Bluetooth, audio,
+  clipboard, emoji, calculator, web search, keybinding reference, theme, quick settings),
+  SwayNC control centre, Wlogout with original icons (Rofi fallback), Hyprlock, Hypridle
+  (suspend only on battery), swww wallpapers with previews, per-monitor wallpapers, slideshow
+  and video wallpapers (still frame on battery), Pyprland drop-down terminal and zoom,
+  screenshots with annotation, OSD for volume/brightness, night light, game mode, keep-awake,
+  airplane mode.
+- `aether-colors`: one palette for every app from wallust, the wallpaper (built-in) or six
+  presets, with enforced contrast and automatic fallback.
+- `aether-interface` (status / set / doctor), `install.sh --interface`, `--no-fonts`;
+  checksum-pinned Nerd Font installer (`scripts/install-fonts.sh`).
+- Package lists accept alternatives (`rofi-wayland|rofi`).
+- Tests: `tests/classic/` (real GTK 3 and Rofi parsers, layouts, configs, isolated-home
+  lifecycle) and `tests/python/test_classic_colors.py`; installer test now covers an existing
+  Waybar config being preserved and restored, and alternative package selection.
+
+- **Looks** (`aether-look`, Super+Ctrl+L): lofi, frost, desk, orbit, retro, pixel, blocks and
+  default — bar layout + style + launcher + palette + gaps/rounding in one step; 7 new Waybar
+  layouts and styles (incl. bottom docks with `wlr/taskbar`), 3 new launchers (grid, side,
+  strip), 3 new palettes (lagoon, slate, synth); presets can name their accent colour;
+  `aether-fetch` (fastfetch with the wallpaper as its picture).
+
+- **Identity looks** anime (new default), cyber, glass, emerald, retrowave, devpro; palettes
+  dusk, neon, emerald; Waybar styles anime and cyber.
+- **Lock screen designs** (`aether-lock`): signature, anime, minimal, typography, cyber, glass,
+  retro; each look sets one.
+- **Wallpaper gallery**: title, search, favourites, recent first, sub-folder categories,
+  slideshow key.
+- `aether-bindings list|search|check`; Super+Ctrl+P visual profile menu.
+
+- **Home look** (new default): top bar, an island that expands on hover with now-playing art,
+  title and controls (event-driven MPRIS), and a macOS-style dock with real app icons
+  (`aether-dock`) and a full-screen **Launchpad** (Super+Alt+D) that pops in (Hyprland layer
+  animation). **Mono** look and palette. Lock designs **stacked** and **island**.
+
+- **Island** now sizes itself: time pill → music card (rounded art, title, artist, controls,
+  upcoming events from khal/calcurse or the date) → volume/brightness level bar for 2 s.
+- **AetherOS Settings** window (`aether-settings`, Super+Ctrl+S): looks, appearance, bar,
+  island, dock, lock screen, wallpaper, keyboard shortcuts, system — wired to the helpers;
+  modern design: profile header, searchable sidebar with coloured tiles, grouped cards,
+  palette strips on looks, toast results.
+- Dock: more first-run apps (browser, files, terminal, editor, chat, music, notes, calendar,
+  monitor, graphics — each only if installed).
+
+- Island shows **only while useful** (music, volume/brightness) as its own Waybar, so it no
+  longer covers windows; setting "Only show while something is happening".
+- Dock shows **running apps** (with their icons) beside the pins; Launchpad has **Apps / Open
+  windows** tabs and reports errors instead of silently doing nothing (its `fullscreen` theme
+  property didn't work on Rofi's Wayland build).
+- Home top bar redesigned: one floating glass strip, animated workspace pills, shortcuts and
+  Launchpad buttons. Bars slide in, the launcher pops in (Hyprland layer animations).
+- **aether-keys** (Super+H): keyboard-shortcut window with key caps by category, searchable.
+
+- `tools/preview-lockscreen.py`: preview any lock design without locking; island design's
+  clock/date spacing and avatar fixed after previewing.
+
+- **Control Centre** (Super+A): frosted-glass panel with 22 real controls (layer-shell, blurred),
+  and an editor in Settings with a control gallery, Add/Remove/reorder and live preview.
+- Control Centre redesigned like a phone control centre (connectivity card, coloured toggles,
+  tall fill sliders, round buttons, album art).
+- **Frosted glass by default** (`aether-glass`, acrylic): stronger blur, translucent windows
+  (opaque exceptions for browsers, video, games, editors), translucent Rofi/SwayNC/bar/panels.
+
+### Changed
+- Keybinds split into shared keys and per-interface files (`config/hypr/interfaces/`).
+- RPM/PKGBUILD: Quickshell is optional (Suggests/optdepends) instead of required.
+- `aether` session commands (launcher, lock, reload…) and `aether repair` follow the active interface.
+
+### Fixed
+- Wallpaper picker listed only favourites when there was no history yet (a failing `tac` under
+  `set -e -o pipefail` ended the list) — found by rendering it; the test now runs the script
+  with its real error settings and was confirmed to fail on the old code.
+- Wallpaper picker keys Alt+F/Alt+S collided with Rofi's own bindings (Rofi showed an error
+  instead of the gallery); now Alt+V/Alt+C/Alt+P, with a test against Rofi's defaults.
+- Rofi launcher: the "AetherOS" banner and sidebar never rendered (custom containers need a
+  `box-` name and textboxes take `content`, not `str`) — found by rendering it with real Rofi.
+- Default Waybar workspaces drew blank buttons; plain dots are used now.
+- `exec-once = hyprpolkitagent` never started the agent on Fedora (it is in /usr/libexec);
+  the systemd unit is used, with the libexec path as fallback.
+- The QML runtime suite loaded fixture images from /tmp that nothing created (it only passed
+  where they were left over); the harness now generates them.
+
+## 1.0.0-rc.2 — 2026-11-11
+
+Release hardening — no new features. Status: **ready for private testing**; publisher identity
+(`tools/set-publisher.sh`) and the hardware checklist (docs/HARDWARE.md) are required before a
+public release candidate.
+
+### Security
+- Lock screen verified against Quickshell's PAM API source (password over a private pipe to a
+  forked PAM helper). Fixed: `pam.start()` failure was ignored (field stuck for 30 s); in-flight
+  conversations are aborted on teardown. Optional hyprlock backend (Settings → Lock screen).
+- Widgets: third-party widgets off by default; explicit trust pinned to a SHA-256 of the files;
+  install ≠ trust; safe mode and `aether recover` disable them; stricter static checks.
+
+### Fixed
+- Packaged entry points (`/usr/bin/aetheros-dotfiles-setup` …) crashed: 11 scripts located
+  themselves through the symlink.
+- GPU: widgets showed unavailable values as 0; hybrid dGPU detail counters never reached the
+  dashboard; System Centre read a non-existent field; NVML session never closed; NVML errors
+  now explain the fix.
+- Network state polled with 4 nmcli processes every 5 s → event-driven (`nmcli monitor`).
+- Installer, uninstall, diagnostics and layouts no longer hide failures (`|| true` audit).
+- RPM Source0/`%setup` didn't match the tarball; PKGBUILD skipped checksums; duplicate wallpaper.
+
+### Verification added
+- Quickshell API conformance checker against v0.2.0 and v0.3.2 (minimum Quickshell: 0.2.0,
+  enforced by the installer); duplicate-assignment check; reproducible tarball; RPM built with
+  rpmbuild + rpmlint; PKGBUILD package() exercised; actionlint; release metadata; symlinked
+  entry points; skipped suites reported as skipped.
+
+### CI
+- Releases require lint + all tests + strict metadata; Fedora job runs the full suite and an RPM
+  build with no suppressed failures; artifacts: tarball, checksum, PKGBUILD, RPM, SRPM.
 
 ## 1.0.0-rc.1 — 2026-11-11
 

@@ -1,0 +1,69 @@
+#!/usr/bin/bash
+# aether-lock — lock screen of the classic interface (Hyprlock).
+#
+#   aether-lock                  lock now (through hypridle/loginctl, so idle rules stay in sync)
+#   aether-lock design NAME      choose a design: focus island signature anime minimal typography cyber glass retro stacked
+#   aether-lock designs          list them
+#   aether-lock menu             pick a design with Rofi
+#   aether-lock try              lock right now to look at the current design (unlock with your password)
+#   aether-lock session          run Hyprlock with the unlock animation (hypridle's lock_cmd uses this)
+#
+# Designs live in config/hypr/hyprlock/; colours and the wallpaper come from
+# aether-colors. Authentication is always Hyprlock's PAM login, whatever the design.
+
+set -euo pipefail
+# shellcheck source=SCRIPTDIR/../lib/classic.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/classic.sh"
+
+DESIGNS="$CLASSIC_REPO/config/hypr/hyprlock"
+
+# Unlock animation. Hyprlock dissolves the lock screen (its fadeOut); while it
+# does, the desktop eases in a little, and once the lock is gone it glides back
+# to normal size and the dock rises. Both moves use an ease-in-out curve, so
+# each starts and ends at rest: the zoom-in finishes before the lock is gone
+# and the zoom-out starts from a standstill — one continuous breath, no jerk.
+# Hyprland animates cursor:zoom_factor (animation zoomFactor); it returns to
+# whatever zoom you had before locking (aether-zoom), not always 1.0.
+smooth() { hyprctl keyword bezier "aetherSmooth,0.45,0,0.2,1" >/dev/null 2>&1; }
+zoom() { hyprctl keyword animation "zoomFactor,1,$2,aetherSmooth" >/dev/null 2>&1; hyprctl keyword cursor:zoom_factor "$1" >/dev/null 2>&1; }
+session() {
+    need hyprlock hyprlock
+    smooth
+    local zoomed=0 line base peak
+    base="$(hyprctl getoption cursor:zoom_factor 2>/dev/null | awk '/float:/ { printf "%.2f", $2 }')"
+    base="${base:-1.0}"
+    peak="$(awk -v b="$base" 'BEGIN { printf "%.2f", b * 1.05 }')"
+    while IFS= read -r line; do
+        case "$line" in
+            *"auth: authenticated"*|*"Unlocking session"*|*"Unlocking with a SIGUSR1"*)
+                [ "$zoomed" -eq 1 ] || { zoom "$peak" 6; zoomed=1; } ;;
+        esac
+    done < <(hyprlock "$@" 2>&1)
+    pgrep -x hyprlock >/dev/null && return 0    # another instance still holds the lock
+    [ "$zoomed" -eq 1 ] || { zoom "$peak" 4; sleep 0.4; }
+    zoom "$base" 9
+    pkill -USR1 -f 'aether\.dock_app' 2>/dev/null || true
+}
+
+designs() { find "$DESIGNS" -maxdepth 1 -name '*.conf' -printf '%f\n' | sed 's/\.conf$//' | sort; }
+
+describe() { sed -n '1s/^# Lock design "[^"]*": //p' "$DESIGNS/$1.conf"; }
+
+case "${1:-now}" in
+    now) exec aether-powermenu run lock ;;
+    session) shift; session "$@" ;;
+    design)
+        [ -n "${2:-}" ] || { echo "usage: aether-lock design NAME (see: aether-lock designs)" >&2; exit 2; }
+        aether-colors lock-design "$2" >/dev/null
+        echo "lock design: $2" ;;
+    designs) for d in $(designs); do printf '%-11s %s\n' "$d" "$(describe "$d")"; done ;;
+    menu)
+        cur="$(cstate_get lock_design signature)"
+        sel="$(for d in $(designs); do printf '%s  %s — %s\t%s\n' "$([ "$d" = "$cur" ] && echo 󰄬 || echo ' ')" "$d" "$(describe "$d")" "$d"; done \
+            | amenu "Lock screen" -display-columns 1 -display-column-separator $'\t' -mesg "Takes effect the next time the screen locks")" || exit 0
+        aether-colors lock-design "${sel##*$'\t'}" >/dev/null
+        notify "Lock screen" "Design: ${sel##*$'\t'}" system-lock-screen -e -u low ;;
+    try) session --grace 0 ;;
+    -h|--help|help) sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+    *) echo "usage: aether-lock [design NAME | designs | menu | try | session]" >&2; exit 2 ;;
+esac

@@ -1,0 +1,87 @@
+# Packages per installer component (functions/components.sh), one per line:
+#   <component><TAB><package>
+# "a|b": alternatives — satisfied by any installed one, else the first your
+#        enabled repositories offer.
+# "?pkg": optional — skipped quietly when no enabled repository has it.
+# Packages every component needs are in packages.txt. Nothing here is a GPU
+# driver: functions/detect.sh only adds optional helpers for a driver in use.
+hyprland	hyprland
+hyprland	xdg-desktop-portal-hyprland
+hyprland	hyprpolkitagent
+hyprland	hypridle
+hyprland	hyprlock
+hyprland	hyprsunset
+hyprland	qt6-qtwayland
+hyprland	grim
+hyprland	slurp
+hyprland	swappy
+hyprland	brightnessctl
+hyprland	power-profiles-daemon|tuned-ppd
+hyprland	?wf-recorder
+hyprland	?hyprpicker
+waybar	waybar
+waybar	network-manager-applet
+dynamic-island	?quickshell
+dynamic-island	playerctl
+dynamic-island	?cava
+dock	gtk-layer-shell
+dock	python3-cairo
+rofi	rofi-wayland|rofi
+rofi	qalculate
+rofi	?wtype
+aether-shell	qt6-qtbase
+aether-shell	qt6-qtdeclarative
+aether-shell	qt6-qtwayland
+aether-shell	qt6-qtshadertools
+aether-shell	hyprpaper
+# Build tools: install.sh builds Quickshell from source when no repository has it.
+aether-shell	cmake
+aether-shell	ninja-build
+aether-shell	gcc-c++
+aether-shell	qt6-qtbase-devel
+aether-shell	qt6-qtdeclarative-devel
+aether-shell	qt6-qtwayland-devel
+aether-shell	pipewire-devel
+terminal	kitty
+terminal	?tmux
+shell	zsh
+shell	zsh-autosuggestions
+shell	zsh-syntax-highlighting
+shell	eza
+shell	bat
+shell	?fzf
+shell	?zoxide
+themes	adw-gtk3-theme
+themes	papirus-icon-theme
+themes	?adwaita-gtk2-theme
+themes	gtk-murrine-engine
+themes	nwg-look
+themes	qt5ct
+themes	qt6ct
+themes	kvantum
+wallpapers	swww
+fonts	jetbrains-mono-fonts-all
+fonts	google-noto-sans-fonts
+fonts	google-noto-color-emoji-fonts
+notifications	SwayNotificationCenter
+notifications	sound-theme-freedesktop
+notifications	libcanberra-gtk3
+bluetooth	bluez
+bluetooth	bluez-tools
+bluetooth	blueman
+audio	pipewire
+audio	pipewire-pulseaudio
+audio	wireplumber
+audio	pavucontrol
+audio	pulseaudio-utils
+audio	pamixer
+audio	playerctl
+apps	wlogout
+apps	fastfetch
+apps	yad
+apps	Thunar
+apps	thunar-archive-plugin
+apps	thunar-volman
+apps	tumbler
+apps	file-roller
+apps	gvfs

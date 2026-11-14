@@ -33,7 +33,9 @@ Singleton {
             if (!root.recording && was) {
                 EventBus.islandEvent("recording", { text: "Recording saved", file: root.file });
             }
-        } catch (e) {}
+        } catch (e) {
+            Logger.warn("RecordingService", "aether-record status was not valid JSON: " + String(e));
+        }
     }
 
     Process {

@@ -15,7 +15,7 @@ Item {
         Text { width: parent.width; elide: Text.ElideRight; text: root.g && root.g.name ? root.g.name : "GPU"; color: root.c("text"); font.family: root.f(); font.pixelSize: 13; font.weight: Font.DemiBold }
         Text {
             text: !root.g || !root.g.available ? (root.g && root.g.note ? root.g.note : "No telemetry")
-                : (root.g.usage >= 0 ? Math.round(root.g.usage * 100) + "% busy" : "—") + (root.g.tempC > 0 ? "  ·  " + Math.round(root.g.tempC) + " °C" : "")
+                : (root.g.usage >= 0 ? Math.round(root.g.usage * 100) + "% busy" : "—") + (root.g.tempC >= 0 ? "  ·  " + Math.round(root.g.tempC) + " °C" : "")
             width: parent.width; wrapMode: Text.WordWrap
             color: root.c("textSecondary"); font.family: root.f(); font.pixelSize: 12
         }

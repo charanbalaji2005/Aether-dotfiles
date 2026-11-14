@@ -1,0 +1,15 @@
+// AetherOS look "Frost": floating translucent bar — workspaces left, a clock
+// capsule in the middle, compact status capsules on the right.
+{
+    "include": ["~/.config/waybar/modules.jsonc"],
+    "layer": "top",
+    "position": "top",
+    "height": 31,
+    "margin-top": 6,
+    "margin-left": 12,
+    "margin-right": 12,
+    "spacing": 6,
+    "modules-left": ["custom/fedora", "hyprland/workspaces#boxes", "mpris"],
+    "modules-center": ["clock#stack", "custom/weather"],
+    "modules-right": ["tray", "cpu", "memory", "network", "bluetooth", "pulseaudio", "battery", "custom/notification", "custom/power"]
+}

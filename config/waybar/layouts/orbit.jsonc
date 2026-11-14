@@ -1,0 +1,28 @@
+// AetherOS look "Orbit": no bar background — a floating workspace pill at the
+// top centre, a few icons top right, and a tiny dock pill at the bottom.
+[
+    {
+        "include": ["~/.config/waybar/modules.jsonc"],
+        "name": "orbit-top",
+        "layer": "top",
+        "position": "top",
+        "height": 30,
+        "margin-top": 8,
+        "margin-left": 12,
+        "margin-right": 12,
+        "spacing": 6,
+        "modules-left": ["clock", "custom/weather"],
+        "modules-center": ["hyprland/workspaces#numbers"],
+        "modules-right": ["network", "pulseaudio", "battery", "custom/notification"]
+    },
+    {
+        "include": ["~/.config/waybar/modules.jsonc"],
+        "name": "orbit-dock",
+        "layer": "top",
+        "position": "bottom",
+        "height": 44,
+        "margin-bottom": 10,
+        "exclusive": false,
+        "modules-center": ["group/dock"]
+    }
+]

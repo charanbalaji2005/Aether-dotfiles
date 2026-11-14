@@ -1,0 +1,73 @@
+#!/usr/bin/bash
+# aether-powermenu — session menu of the AetherOS classic interface.
+#
+#   aether-powermenu                 wlogout, sized for the focused monitor (Rofi menu if wlogout is missing)
+#   aether-powermenu run ACTION      lock | logout | suspend | hibernate | reboot | shutdown | suspend-on-battery
+#
+# Logout, reboot and shut down close Hyprland cleanly; suspend and hibernate
+# lock first so the session is never left open on resume.
+
+set -euo pipefail
+# shellcheck source=SCRIPTDIR/../lib/classic.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/classic.sh"
+
+lock() {
+    if pgrep -x hyprlock >/dev/null; then return 0; fi
+    if have loginctl && loginctl lock-session 2>/dev/null && pgrep -x hypridle >/dev/null; then
+        return 0  # hypridle's lock_cmd starts hyprlock
+    fi
+    need hyprlock hyprlock
+    setsid -f aether-lock session >/dev/null 2>&1
+}
+
+run_action() {
+    case "$1" in
+        lock) lock ;;
+        logout) in_hyprland && hyprctl dispatch exit >/dev/null ;;
+        suspend) lock; sleep 1; systemctl suspend ;;
+        hibernate)
+            if have busctl && ! busctl call org.freedesktop.login1 /org/freedesktop/login1 \
+                    org.freedesktop.login1.Manager CanHibernate 2>/dev/null | grep -q '"yes"'; then
+                notify "Hibernate unavailable" "This system has no hibernation resume target (swap/zram)." dialog-warning -u critical
+                return 1
+            fi
+            lock; sleep 1; systemctl hibernate ;;
+        suspend-on-battery)
+            # hypridle's long timeout: suspend laptops on battery, never desktops on AC.
+            local ps
+            for ps in /sys/class/power_supply/*; do
+                [ "$(cat "$ps/type" 2>/dev/null)" = Mains ] && [ "$(cat "$ps/online" 2>/dev/null)" = 1 ] && return 0
+            done
+            compgen -G '/sys/class/power_supply/BAT*' >/dev/null || return 0
+            run_action suspend ;;
+        reboot) systemctl reboot ;;
+        shutdown) systemctl poweroff ;;
+        *) echo "unknown action: $1 (lock|logout|suspend|hibernate|reboot|shutdown)" >&2; return 2 ;;
+    esac
+}
+
+show() {
+    if pgrep -x wlogout >/dev/null; then pkill -x wlogout; return 0; fi
+    if ! have wlogout; then exec aether-menu power; fi
+    local w=1920 h=1080 scale=1 name rest margin_v margin_h
+    if in_hyprland; then
+        while read -r name w h scale rest; do
+            [ "$rest" = 1 ] && break
+        done < <(hypr_monitors)
+    fi
+    : "$name" "$scale"
+    # Two rows of three square-ish buttons, centred.
+    margin_v=$(( h * 28 / 100 ))
+    margin_h=$(( w > h ? w * 22 / 100 : w * 8 / 100 ))
+    local c="$CLASSIC_DIR/wlogout/style.css"
+    [ -f "$c" ] || c="${XDG_CONFIG_HOME:-$HOME/.config}/wlogout/style.css"
+    wlogout -b 3 -c 12 -r 12 -T "$margin_v" -B "$margin_v" -L "$margin_h" -R "$margin_h" \
+        -l "${XDG_CONFIG_HOME:-$HOME/.config}/wlogout/layout" -C "$c" --protocol layer-shell &
+}
+
+case "${1:-show}" in
+    show) show ;;
+    run) run_action "${2:-}" ;;
+    -h|--help|help) sed -n '2,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+    *) echo "usage: aether-powermenu [run ACTION]" >&2; exit 2 ;;
+esac

@@ -1,0 +1,23 @@
+/* Look "Blocks": square, solid blocks in the accent colour with dark text —
+   boxed workspace numbers, every reading in its own block. */
+@import "_base.css";
+window#waybar { background: transparent; color: @on_accent; }
+#workspaces button, #window, #clock, #custom-weather, #tray, #cpu, #temperature, #memory,
+#battery, #pulseaudio, #network, #custom-notification, #custom-power {
+    background: @accent;
+    color: @on_accent;
+    border-radius: 3px;
+    padding: 0 9px;
+    margin: 2px 2px;
+}
+#workspaces button { padding: 0 8px; background: alpha(@accent, 0.55); }
+#workspaces button.active { background: @accent; box-shadow: inset 0 -3px @on_accent; }
+#workspaces button.empty { background: alpha(@accent, 0.30); color: alpha(@on_accent, 0.7); }
+#workspaces button.urgent { background: @urgent; }
+#window { background: alpha(@bg, 0.75); color: @text; }
+window#waybar.empty #window { background: transparent; }
+#clock { font-weight: 800; }
+#battery.critical:not(.charging), #temperature.critical { background: @urgent; color: @bg; }
+#pulseaudio.muted, #network.disconnected { background: alpha(@accent, 0.45); color: @on_accent; }
+#tray { background: alpha(@bg, 0.75); }
+#tray.empty { background: transparent; border: none; padding: 0; margin: 0; }

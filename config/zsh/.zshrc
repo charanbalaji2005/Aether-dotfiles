@@ -24,7 +24,10 @@ bindkey '^[[1;5D' backward-word
 bindkey '^[[3~' delete-char
 
 # ── PATH ─────────────────────────────────────────────────────────────────
-export PATH="$HOME/.local/bin:$HOME/dotfiles/scripts/bin:$PATH"
+# The installer links every AetherOS helper into ~/.local/bin. typeset -U
+# drops duplicates when this file is sourced again (exec zsh, nested shells).
+typeset -U path
+export PATH="$HOME/.local/bin:$PATH"
 
 # ── Environment ──────────────────────────────────────────────────────────
 export EDITOR="${EDITOR:-nvim}"

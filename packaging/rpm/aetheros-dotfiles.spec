@@ -1,30 +1,43 @@
+# Upstream versions like 1.0.0-rc.2 map to RPM Version 1.0.0 with a
+# pre-release Release (0.N.rcN), so 1.0.0-1 later sorts after every RC.
+%global upstream_version 1.0.0
+
 Name:           aetheros-dotfiles
 Version:        1.0.0
-Release:        0.1.rc1%{?dist}
-Summary:        AetherOS Hyprland dotfiles and Quickshell desktop shell
+Release:        1%{?dist}
+Summary:        AetherOS desktop for Hyprland: Quickshell shell, configuration and tools
 
 License:        GPL-3.0-or-later
-URL:            https://github.com/OWNER/aetheros-dotfiles
-Source0:        %{name}.tar.gz
-# Source0 intentionally has no real upstream URL yet — this repo hasn't
-# been published to a specific location. Update both URL and Source0 once
-# it has a real home; rpmlint will flag this until then, correctly.
-BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
-Group:          Applications/System
-Packager:       Charan Balaji <noreply@example.invalid>
+URL:            https://github.com/charanbalaji2005/Aether-dotfiles
+Source0:        %{url}/releases/download/v%{upstream_version}/%{name}-%{upstream_version}.tar.gz
 
 BuildArch:      noarch
+BuildRequires:  python3
 
 Requires:       hyprland
+Requires:       python3 >= 3.9
 Requires:       kitty
 Requires:       zsh
-Requires:       python3
+Recommends:     hypridle
+# Classic interface (the default)
+Recommends:     waybar
+Recommends:     (rofi-wayland or rofi)
+Recommends:     SwayNotificationCenter
+Recommends:     hyprlock
+Recommends:     swww
+Recommends:     cliphist
+Recommends:     grim
+Recommends:     slurp
+# The aether (Quickshell) interface
+Suggests:       quickshell >= 0.2.0
 Recommends:     pciutils
 Recommends:     hwdata
-Recommends:     mokutil
+Recommends:     libsecret
+Recommends:     power-profiles-daemon
 
 %description
-AetherOS dotfiles: Hyprland configuration, the AetherOS Shell (Quickshell),
+AetherOS dotfiles: Hyprland configuration with two interfaces — "classic"
+(Waybar, Rofi, SwayNC, Wlogout, Hyprlock, swww) and the AetherOS Shell (Quickshell),
 terminal and shell configuration, install/backup/restore scripts, and
 package lists.
 
@@ -39,7 +52,7 @@ installing, run:
 as your regular (non-root) user to symlink the configs into place.
 
 %prep
-%setup -q -n aetheros-dotfiles
+%setup -q -n %{name}-%{upstream_version}
 
 %build
 # Nothing to compile — this package is configuration files and shell
@@ -51,6 +64,9 @@ mkdir -p %{buildroot}%{_datadir}/%{name}
 cp -a . %{buildroot}%{_datadir}/%{name}/
 rm -rf %{buildroot}%{_datadir}/%{name}/.git
 rm -rf %{buildroot}%{_datadir}/%{name}/.github
+# Development-only content: tests, packaging recipes, editor/lint configs.
+rm -rf %{buildroot}%{_datadir}/%{name}/tests %{buildroot}%{_datadir}/%{name}/packaging
+rm -f %{buildroot}%{_datadir}/%{name}/.editorconfig %{buildroot}%{_datadir}/%{name}/.gitattributes %{buildroot}%{_datadir}/%{name}/.shellcheckrc
 find %{buildroot}%{_datadir}/%{name} -name ".gitignore" -delete
 find %{buildroot}%{_datadir}/%{name} -name "__pycache__" -type d -prune -exec rm -rf {} +
 
@@ -65,6 +81,8 @@ ln -s ../share/%{name}/scripts/bin/aether-screenshot \
       %{buildroot}%{_bindir}/aether-screenshot
 ln -s ../share/%{name}/scripts/bin/aether-wallpaper \
       %{buildroot}%{_bindir}/aether-wallpaper
+# Entry points must stay executable through the symlinks.
+chmod 0755 %{buildroot}%{_datadir}/%{name}/install.sh %{buildroot}%{_datadir}/%{name}/scripts/*.sh %{buildroot}%{_datadir}/%{name}/scripts/bin/*
 
 %files
 %license LICENSE
@@ -77,21 +95,31 @@ ln -s ../share/%{name}/scripts/bin/aether-wallpaper \
 %{_bindir}/aether-wallpaper
 
 %changelog
-* Wed Nov 11 2026 AetherOS Project <noreply@example.invalid> - 1.0.0-0.1.rc1
+* Sat Nov 14 2026 Neelampalli Charan Balaji <neelampallicharanbalaji14@gmail.com> - 1.0.0-1
+- 1.0.0: interactive onboarding installer (component selection, live progress,
+  hardware detection, backups, validation report, restore), partial installs,
+  user.conf for your own Hyprland settings. See CHANGELOG.md.
+
+* Wed Nov 11 2026 Neelampalli Charan Balaji <neelampallicharanbalaji14@gmail.com> - 1.0.0-0.2.rc2
+- Release hardening: verified Quickshell API use (0.2.0-0.3.2), PAM start failure
+  handling, widget trust model, GPU telemetry fixes, symlinked entry points,
+  reproducible source tarball. See CHANGELOG.md.
+
+* Wed Nov 11 2026 Neelampalli Charan Balaji <neelampallicharanbalaji14@gmail.com> - 1.0.0-0.1.rc1
 - 1.0 release candidate: NVML telemetry, GPU-pressure policy, assistant, widgets, Island 2.0,
   28 settings sections, custom themes, displays with auto-revert. See CHANGELOG.md.
 
-* Wed Nov 11 2026 AetherOS Project <noreply@example.invalid> - 0.3.0-1
+* Wed Nov 11 2026 Neelampalli Charan Balaji <neelampallicharanbalaji14@gmail.com> - 0.3.0-1
 - Installer lifecycle (check/dry-run/install/update/uninstall/rollback), snapshots, recovery,
   safe-mode unit, animation/graphics engine, dock, island, overview, system centre, layouts,
   automation, profiles, palettes, wallpaper engine, lock screen hardening. See CHANGELOG.md.
 
-* Mon Nov 09 2026 AetherOS Project <noreply@example.invalid> - 0.2.0-1
+* Mon Nov 09 2026 Neelampalli Charan Balaji <neelampallicharanbalaji14@gmail.com> - 0.2.0-1
 - aether CLI backend (lib/aether): hardware detection, graphics/NVIDIA
   management, telemetry, performance profiles, diagnostics, repair.
 - Shell: control centre, system dashboard, launcher favourites/recents,
   notification grouping, OSD, design system with light theme.
 
-* Sat Aug 22 2026 AetherOS Project <noreply@example.invalid> - 0.1.0-1
+* Sat Aug 22 2026 Neelampalli Charan Balaji <neelampallicharanbalaji14@gmail.com> - 0.1.0-1
 - Initial packaging: Hyprland config, Aether Shell, terminal/shell config,
   install/backup/restore/uninstall scripts.

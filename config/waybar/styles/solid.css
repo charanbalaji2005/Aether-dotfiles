@@ -1,0 +1,39 @@
+/* AetherOS classic — "solid": one full-width surface with an accent underline. */
+* {
+    font-family: "JetBrainsMono Nerd Font", "JetBrains Mono", sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    min-height: 0;
+    border: none;
+    border-radius: 0;
+}
+window#waybar {
+    background: @bg;
+    color: @text;
+    border-bottom: 2px solid alpha(@accent, 0.8);
+}
+window#waybar.bottom { border-bottom: none; border-top: 2px solid alpha(@accent, 0.8); }
+tooltip { background: @surface; border: 1px solid @border; border-radius: 8px; }
+tooltip label { color: @text; }
+
+.modules-left > widget > *, .modules-center > widget > *, .modules-right > widget > * {
+    padding: 0 10px;
+    color: @text;
+}
+#custom-menu { background: @accent; color: @on_accent; font-size: 16px; padding: 0 14px; }
+#workspaces { padding: 0; }
+#workspaces button { color: @muted; padding: 0 9px; background: transparent; border-bottom: 2px solid transparent; }
+#workspaces button.active { color: @accent; border-bottom: 2px solid @accent; background: alpha(@accent, 0.12); }
+#workspaces button.urgent { color: @urgent; }
+#workspaces button:hover { background: @surface2; box-shadow: none; }
+#hardware > *, #quick > * { padding: 0 6px; }
+#window { color: @subtext; }
+#clock { color: @accent; font-weight: 700; }
+#cpu.warning, #memory.warning, #battery.warning { color: @warn; }
+#cpu.critical, #memory.critical, #temperature.critical, #battery.critical { color: @urgent; }
+#battery.charging { color: @ok; }
+#pulseaudio.muted, #network.disconnected, #bluetooth.off { color: @muted; }
+#idle_inhibitor.activated, #custom-gamemode.on, #custom-nightlight.on { color: @warn; }
+#custom-power { color: @urgent; padding: 0 14px; }
+#custom-power:hover { background: @urgent; color: @bg; }
+#tray menu { background: @bg; color: @text; }

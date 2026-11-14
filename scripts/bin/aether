@@ -39,7 +39,8 @@ Performance & maintenance
   theme mode <dark|light|auto>
   update                 Pull latest dotfiles, re-apply symlinks, validate
 
-Session
+Session (classic interface: mapped to aether-menu, aether-wall, aether-shot…)
+  interface              see: aether-interface status | set classic|aether | doctor
   reload                 Reload Hyprland config and restart the shell
   shell-reload           Restart only the shell (aether-shell)
   lock                   Lock the session
@@ -156,6 +157,32 @@ cmd_update() {
     bash "$d/scripts/update.sh"
 }
 
+# Session commands follow the active interface (aether-interface): the
+# classic interface has no Quickshell IPC, so they map to its helpers.
+classic_session() {
+    local iface
+    iface="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/aether-shell/interface" 2>/dev/null || echo classic)"
+    [ "$iface" = aether ] && return 1
+    local bin; bin="$(script_dir)"
+    case "$1" in
+        reload|shell-reload) exec "$bin/aether-classic-start" --reload ;;
+        lock) exec "$bin/aether-powermenu" run lock ;;
+        screenshot) [ "${2:-full}" = region ] && exec "$bin/aether-shot" area; exec "$bin/aether-shot" screen ;;
+        launcher) exec "$bin/aether-menu" apps ;;
+        clipboard) exec "$bin/aether-menu" clipboard ;;
+        dashboard|controlcenter|control-center) exec "$bin/aether-menu" settings ;;
+        notifications) exec swaync-client -t -sw ;;
+        wallpaper) shift; exec "$bin/aether-wall" "${@:-select}" ;;
+        logs) exec tail -f "${XDG_RUNTIME_DIR:-/tmp}/aether-classic-$(id -u)/start.log" ;;
+        doctor) exec "$bin/aether-interface" doctor ;;
+    esac
+    return 1
+}
+case "${1:-}" in
+    reload|shell-reload|lock|screenshot|launcher|clipboard|dashboard|controlcenter|control-center|notifications|wallpaper|logs|doctor)
+        classic_session "$@" || true ;;
+esac
+
 case "${1:-help}" in
     system|hardware|cpu|gpu|graphics|performance|diagnostics|repair|hyprland|theme|telemetry)
         py "$@"
@@ -185,8 +212,8 @@ case "${1:-help}" in
     update) cmd_update ;;
     help|-h|--help) usage ;;
     *)
-        echo "Unknown command: $1" >&2
-        usage >&2
-        exit 1
+        # Everything else (config, idle, autostart, workspace, display, …)
+        # belongs to the Python CLI, which reports unknown commands itself.
+        py "$@"
         ;;
 esac

@@ -1,0 +1,25 @@
+// AetherOS look "Desk": a slim top menu bar plus a centred dock at the bottom
+// with launchers and the open windows.
+[
+    {
+        "include": ["~/.config/waybar/modules.jsonc"],
+        "name": "desk-top",
+        "layer": "top",
+        "position": "top",
+        "height": 28,
+        "spacing": 4,
+        "modules-left": ["custom/fedora", "hyprland/window"],
+        "modules-center": ["hyprland/workspaces#numbers"],
+        "modules-right": ["tray", "network", "bluetooth", "pulseaudio", "battery", "clock#stack", "custom/weather", "custom/notification", "custom/power"]
+    },
+    {
+        "include": ["~/.config/waybar/modules.jsonc"],
+        "name": "desk-dock",
+        "layer": "top",
+        "position": "bottom",
+        "height": 52,
+        "margin-bottom": 8,
+        "exclusive": false,
+        "modules-center": ["group/dock"]
+    }
+]

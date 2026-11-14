@@ -1,0 +1,22 @@
+#!/usr/bin/bash
+# aether-fetch — fastfetch with your current wallpaper as the picture (kitty
+# terminals; other terminals get the small text logo).
+#   aether-fetch           print the summary
+#   aether-fetch --hold    …and wait for a key (for a terminal opened just for it)
+set -uo pipefail
+# shellcheck source=SCRIPTDIR/../lib/classic.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/classic.sh"
+
+if ! have fastfetch; then
+    echo "fastfetch is not installed (sudo dnf install fastfetch)" >&2
+    [ "${1:-}" = --hold ] && read -r -n 1 -s -p "Press any key…"
+    exit 1
+fi
+img="$(aether-wall thumb 2>/dev/null || true)"
+if [ -n "$img" ] && [ -f "$img" ] && { [ "${TERM:-}" = xterm-kitty ] || [ -n "${KITTY_WINDOW_ID:-}" ]; }; then
+    fastfetch --logo "$img" --logo-type kitty --logo-width 34 --logo-height 15 --logo-padding-right 2
+else
+    fastfetch
+fi
+[ "${1:-}" = --hold ] && read -r -n 1 -s -p ""
+exit 0

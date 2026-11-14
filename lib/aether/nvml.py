@@ -50,7 +50,9 @@ class Nvml:
         self._lib = lib if lib is not None else self._load()
         rc = self._call("nvmlInit_v2") if hasattr(self._lib, "nvmlInit_v2") else self._call("nvmlInit")
         if rc != NVML_SUCCESS:
-            raise NvmlUnavailable("nvmlInit failed (%s)" % self.error_string(rc))
+            hint = {9: " — the NVIDIA kernel module isn't loaded", 18: " — driver and library versions differ; reboot after a driver update",
+                    12: " — no permission to the GPU device nodes"}.get(rc, "")
+            raise NvmlUnavailable("nvmlInit failed (%s)%s" % (self.error_string(rc), hint))
         self._handles: Dict[str, Any] = {}
 
     @staticmethod

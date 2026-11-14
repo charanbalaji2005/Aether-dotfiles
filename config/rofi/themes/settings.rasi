@@ -1,0 +1,6 @@
+/* AetherOS classic — quick-settings hub: two columns of actions. */
+@import "base.rasi"
+window { width: 760px; }
+mainbox { children: [ inputbar, listview ]; }
+listview { lines: 11; columns: 2; spacing: 6px; }
+element-icon { size: 0; }

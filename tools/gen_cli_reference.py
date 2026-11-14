@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """Writes docs/CLI_REFERENCE.md from the `aether` argument parser itself,
 so the reference can't drift from the code.
 

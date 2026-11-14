@@ -16,7 +16,8 @@ bash tests/run-all.sh
 | `config/test_config_files.sh` | python3 | systemd units, package lists, schema, every IPC call resolves |
 | `python/run_python_tests.sh` | python3 ≥ 3.9 | backend against fixture hardware, local HTTP servers, fake NVML |
 | `integration/test_symlink_lifecycle.sh` | — | link/backup/restore/uninstall |
-| `integration/test_installer.sh` | **non-root** user | `install.sh` check/dry-run/install/reinstall/resume/rollback in a fake home |
+| `integration/test_installer.sh` | **non-root** user | `install.sh` check/dry-run/install/reinstall/resume/rollback in a fake home; partial installs (`--components`), keybind/script preservation, report |
+| `integration/test_onboarding.sh` | **non-root** user, python3 | the onboarding installer on a pseudo-terminal (`AETHER_UI=plain`): welcome, first-run support screen, Recommended preset, live progress, completion screen, final menu |
 
 ```sh
 pip install PySide6-Essentials PySide6-Addons     # qmllint + runtime suite

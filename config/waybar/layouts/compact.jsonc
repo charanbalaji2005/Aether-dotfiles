@@ -1,0 +1,11 @@
+// AetherOS classic — "compact": full-width, thin, edge to edge (small screens).
+{
+    "include": ["~/.config/waybar/modules.jsonc"],
+    "layer": "top",
+    "position": "top",
+    "height": 26,
+    "spacing": 2,
+    "modules-left": ["custom/menu", "hyprland/workspaces#numbers", "hyprland/window"],
+    "modules-center": ["clock", "custom/weather"],
+    "modules-right": ["tray", "cpu", "memory", "network", "bluetooth", "pulseaudio", "backlight", "battery", "custom/notification", "custom/power"]
+}

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """Regenerates lib/aether/_schema_data.py from core/Config.qml.
 
 The shell's Config.qml is the single source of truth for config.json: keys,

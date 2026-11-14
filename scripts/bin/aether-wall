@@ -1,0 +1,373 @@
+#!/usr/bin/bash
+# aether-wall — wallpapers for the AetherOS classic interface (swww/awww + mpvpaper).
+#
+#   aether-wall select                     gallery: previews, ★ favourites, recent first, sub-folder categories
+#   aether-wall set FILE [--output NAME]   apply an image, GIF or video (video needs mpvpaper)
+#   aether-wall random|next|prev [--output NAME]
+#   aether-wall restore                    re-apply the saved wallpapers (run at login)
+#   aether-wall slideshow start [MINUTES] | stop | status
+#   aether-wall resize crop|fit|no         how images are scaled (default crop)
+#   aether-wall check                      resolution of every wallpaper vs. your screens
+#   aether-wall list | current | history | thumb [FILE] | favourite FILE | favourites
+#
+# Every change records the wallpaper per monitor in
+# ~/.config/aether-shell/classic/state.conf and re-themes the desktop through
+# aether-colors. Folders searched: ~/Pictures/Wallpapers,
+# ~/.config/aether-shell/wallpapers (the bundled set) and any folders in the
+# state key wall_dirs (colon-separated).
+
+set -euo pipefail
+# shellcheck source=SCRIPTDIR/../lib/classic.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/classic.sh"
+
+CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/aether"
+THUMBS="$CACHE/thumbs"
+HISTORY="${XDG_STATE_HOME:-$HOME/.local/state}/aether/wallpaper-history"
+PIDFILE="$CLASSIC_RUNTIME/slideshow.pid"
+IMAGE_RE='\.(jpe?g|png|webp|gif|bmp|tiff?|avif|jxl)$'
+VIDEO_RE='\.(mp4|mkv|webm|mov|avi)$'
+QUIET=0
+
+usage() { sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+
+wall_dirs() {
+    local extra d
+    printf '%s\n' "$HOME/Pictures/Wallpapers" "${XDG_CONFIG_HOME:-$HOME/.config}/aether-shell/wallpapers"
+    extra="$(cstate_get wall_dirs)"
+    if [ -n "$extra" ]; then
+        local IFS=:
+        for d in $extra; do printf '%s\n' "$d"; done
+    fi
+}
+
+list_walls() {
+    local d
+    while IFS= read -r d; do
+        [ -d "$d" ] || continue
+        find -L "$d" -maxdepth 3 -type f -regextype posix-extended -iregex ".*($IMAGE_RE|$VIDEO_RE)" 2>/dev/null
+    done < <(wall_dirs) | sort -u
+}
+
+is_video() { [[ "${1,,}" =~ $VIDEO_RE ]]; }
+
+swww_bin() {
+    if have awww; then echo awww; elif have swww; then echo swww; else echo ""; fi
+}
+
+ensure_daemon() {
+    local sw; sw="$(swww_bin)"
+    [ -n "$sw" ] || { notify "Wallpaper" "swww is not installed (sudo dnf install swww)" dialog-warning; return 1; }
+    if ! "$sw" query >/dev/null 2>&1; then
+        setsid -f "${sw}-daemon" >/dev/null 2>&1 || { notify "Wallpaper" "${sw}-daemon could not start" dialog-error; return 1; }
+        local i
+        for i in $(seq 1 30); do "$sw" query >/dev/null 2>&1 && return 0; sleep 0.1; done
+        notify "Wallpaper" "${sw}-daemon did not answer" dialog-error
+        return 1
+    fi
+}
+
+outputs() {
+    if in_hyprland; then hypr_monitors | awk '{print $1}'; fi
+}
+
+on_battery() {
+    local s
+    for s in /sys/class/power_supply/*; do
+        [ -r "$s/type" ] || continue
+        if [ "$(cat "$s/type")" = "Mains" ] && [ "$(cat "$s/online" 2>/dev/null || echo 1)" = "1" ]; then return 1; fi
+    done
+    compgen -G '/sys/class/power_supply/BAT*' >/dev/null
+}
+
+thumb_for() {  # thumb_for FILE -> path of a cached preview (empty if none can be made)
+    local f="$1" key out
+    key="$(printf '%s|%s' "$f" "$(stat -c %Y "$f" 2>/dev/null || echo 0)" | md5sum | cut -c1-32)"
+    out="$THUMBS/$key.png"
+    if [ ! -s "$out" ]; then
+        mkdir -p "$THUMBS"
+        if is_video "$f"; then
+            if have ffmpegthumbnailer; then
+                ffmpegthumbnailer -i "$f" -o "$out" -s 400 >/dev/null 2>&1 || true
+            elif have ffmpeg; then
+                ffmpeg -loglevel error -y -ss 2 -i "$f" -frames:v 1 -vf scale=400:-1 "$out" >/dev/null 2>&1 || true
+            fi
+        else
+            local im; im="$(command -v magick || command -v convert || true)"
+            [ -n "$im" ] && "$im" -define jpeg:size=800x500 "${f}[0]" -thumbnail '400x250^' -gravity center -extent 400x250 "$out" >/dev/null 2>&1 || true
+        fi
+    fi
+    [ -s "$out" ] && echo "$out" || true
+}
+
+record() {  # record OUTPUT FILE
+    local out="$1" f="$2"
+    if [ -n "$out" ]; then cstate_set "wall_$out" "$f"; else
+        local o; while IFS= read -r o; do cstate_set "wall_$o" "$f"; done < <(outputs)
+    fi
+    cstate_set wallpaper "$f"
+    mkdir -p "$(dirname "$HISTORY")"
+    { grep -vxF -- "$f" "$HISTORY" 2>/dev/null || true; echo "$f"; } | tail -n 50 > "$HISTORY.tmp"
+    mv "$HISTORY.tmp" "$HISTORY"
+}
+
+image_size() {  # image_size FILE -> "W H" (empty if unknown); reads the header only
+    local im; im="$(command -v magick || command -v identify || true)"
+    [ -n "$im" ] || return 0
+    [ "$(basename "$im")" = magick ] && im="$im identify"
+    $im -ping -format '%w %h' "${1}[0]" 2>/dev/null || true
+}
+
+screen_size() {  # screen_size [OUTPUT] -> physical "W H" of that monitor (or the largest)
+    hypr_monitors | awk -v o="${1:-}" '(o == "" || $1 == o) { w = int($2 * $4 + 0.5); h = int($3 * $4 + 0.5); if (w * h > bw * bh) { bw = w; bh = h } }
+        END { if (bw) print bw, bh }'
+}
+
+low_res() {  # low_res FILE OUTPUT -> prints "WxH|SWxSH" when the image is smaller than the screen
+    local iw ih sw sh
+    read -r iw ih <<<"$(image_size "$1")"; read -r sw sh <<<"$(screen_size "$2")"
+    [ -n "${iw:-}" ] && [ -n "${sw:-}" ] || return 1
+    [ "$iw" -lt "$sw" ] || [ "$ih" -lt "$sh" ] || return 1
+    echo "${iw}x${ih}|${sw}x${sh}"
+}
+
+cmd_check() {
+    local f sz scr; scr="$(screen_size)"
+    echo "Screen: ${scr/ /x} (images from this size up to 8K / 7680x4320 stay sharp)"
+    while IFS= read -r f; do
+        is_video "$f" && continue
+        sz="$(image_size "$f")"
+        if low_res "$f" "" >/dev/null; then printf '  LOW  %-11s %s\n' "${sz/ /x}" "$f"
+        else printf '  ok   %-11s %s\n' "${sz/ /x}" "$f"; fi
+    done < <(list_walls)
+}
+
+stop_video() { pkill -x mpvpaper 2>/dev/null || true; }
+
+apply_image() {  # apply_image FILE OUTPUT TRANSITION(0/1)
+    local f="$1" out="$2" anim="$3" sw resize
+    ensure_daemon || return 1
+    sw="$(swww_bin)"
+    resize="$(cstate_get wall_resize crop)"
+    # Lanczos3 keeps detail when a 4K-8K image is scaled down to the screen.
+    local args=(img "$f" --resize "$resize" --filter "$(cstate_get wall_filter Lanczos3)")
+    [ -n "$out" ] && args+=(--outputs "$out")
+    if [ "$anim" = 1 ]; then
+        args+=(--transition-type "$(cstate_get wall_transition grow)" --transition-duration 1.4 --transition-fps 60 --transition-pos '0.85,0.92')
+    else
+        args+=(--transition-type none)
+    fi
+    "$sw" "${args[@]}"
+}
+
+apply_video() {  # apply_video FILE OUTPUT
+    local f="$1" out="$2"
+    need mpvpaper mpvpaper
+    stop_video
+    setsid -f mpvpaper -o "no-audio --loop --hwdec=auto --panscan=1.0 --really-quiet" "${out:-ALL}" "$f" >/dev/null 2>&1
+}
+
+set_wall() {  # set_wall FILE OUTPUT TRANSITION
+    local f="$1" out="${2:-}" anim="${3:-1}"
+    [ -f "$f" ] || { echo "aether-wall: no such file: $f" >&2; return 1; }
+    f="$(readlink -f "$f")"
+    if is_video "$f"; then
+        if on_battery && [ "$(cstate_get video_on_battery no)" != "yes" ]; then
+            local still; still="$(thumb_for "$f")"
+            notify "Live wallpaper paused" "On battery: showing a still frame. Allow video on battery with: aether-wall battery-video yes" video-x-generic
+            [ -n "$still" ] && apply_image "$still" "$out" "$anim"
+        else
+            apply_video "$f" "$out"
+        fi
+        record "$out" "$f"
+        local frame; frame="$(thumb_for "$f")"
+        if [ -n "$frame" ]; then aether-colors apply --wallpaper "$f" --palette-image "$frame" >/dev/null || true
+        else aether-colors apply --wallpaper "$f" >/dev/null || true; fi
+    else
+        stop_video
+        apply_image "$f" "$out" "$anim"
+        local lr
+        if [ "$QUIET" -ne 1 ] && lr="$(low_res "$f" "$out")"; then
+            notify "Low-resolution wallpaper" "$(basename "$f") is ${lr%|*} but the screen is ${lr#*|}, so it will look blurry. Use an image at least ${lr#*|} (up to 8K is fine). List them: aether-wall check" dialog-warning
+        fi
+        record "$out" "$f"
+        aether-colors apply --wallpaper "$f" >/dev/null || notify "Theme" "Colours could not be updated (run aether-colors apply in a terminal for details)" dialog-warning
+    fi
+    [ "$QUIET" -eq 1 ] || notify "Wallpaper" "$(basename "$f")" "$(thumb_for "$f")" -e -u low -h string:x-canonical-private-synchronous:aether-wall
+}
+
+pick_output() {
+    local outs; mapfile -t outs < <(outputs)
+    if [ "${#outs[@]}" -le 1 ]; then echo ""; return 0; fi
+    local choice
+    choice="$(printf '%s\n' "All monitors" "${outs[@]}" | amenu "Monitor")" || return 1
+    [ "$choice" = "All monitors" ] && echo "" || echo "$choice"
+}
+
+FAVS="${XDG_STATE_HOME:-$HOME/.local/state}/aether/wallpaper-favourites"
+
+is_fav() { grep -qxF -- "$1" "$FAVS" 2>/dev/null; }
+
+toggle_fav() {
+    mkdir -p "$(dirname "$FAVS")"
+    if is_fav "$1"; then grep -vxF -- "$1" "$FAVS" > "$FAVS.tmp" || true; mv "$FAVS.tmp" "$FAVS"
+    else echo "$1" >> "$FAVS"; fi
+}
+
+category_of() {  # the first folder under the wallpaper directory, or "—"
+    local f="$1" d rel
+    while IFS= read -r d; do
+        case "$f" in "$d"/*/*) rel="${f#"$d"/}"; echo "${rel%%/*}"; return ;; "$d"/*) echo "—"; return ;; esac
+    done < <(wall_dirs)
+    echo "—"
+}
+
+# gallery_order CATEGORY: favourites first, then recently used, then the rest;
+# filtered to one category (sub-folder) unless CATEGORY is "all".
+gallery_order() {
+    local cat="$1" f
+    {
+        if [ -f "$FAVS" ]; then while IFS= read -r f; do if [ -f "$f" ]; then echo "1$f"; fi; done < "$FAVS"; fi
+        if [ -f "$HISTORY" ]; then tac "$HISTORY" | while IFS= read -r f; do if [ -f "$f" ]; then echo "2$f"; fi; done; fi
+        list_walls | sed 's/^/3/'
+    } | awk '!seen[substr($0, 2)]++' | while IFS= read -r f; do
+        f="${f:1}"
+        if [ "$cat" = all ] || [ "$(category_of "$f")" = "$cat" ]; then echo "$f"; fi
+    done
+}
+
+picker_entries() {  # rofi rows with preview icons (NUL-separated row options can't live in a variable)
+    local f thumb label
+    printf '%s\0icon\x1f%s\n' "  Random" "media-playlist-shuffle"
+    for f in "$@"; do
+        thumb="$(thumb_for "$f")"
+        label="$(basename "$f")"; label="${label%.*}"
+        is_fav "$f" && label="★ $label"
+        printf '%s\0icon\x1f%s\n' "$label" "${thumb:-image-x-generic}"
+    done
+}
+
+cmd_select() {
+    local walls choice out rc cat=all cats
+    while true; do
+        mapfile -t walls < <(gallery_order "$cat")
+        if [ "${#walls[@]}" -eq 0 ] && [ "$cat" = all ]; then
+            notify "No wallpapers found" "Put images in ~/Pictures/Wallpapers (sub-folders become categories)" dialog-information
+            return 1
+        fi
+        rc=0
+        choice="$(picker_entries "${walls[@]}" | rofi -dmenu -i -show-icons -format i -p "Wallpapers" \
+            -mesg "Category: $cat   ·   Enter apply   ·   Alt+V favourite ★   ·   Alt+C category   ·   Alt+P slideshow on/off" \
+            -kb-custom-1 "Alt+v" -kb-custom-2 "Alt+c" -kb-custom-3 "Alt+p" \
+            -theme "$ROFI_THEMES/wallpaper.rasi")" || rc=$?
+        case "$rc" in
+            0) break ;;
+            10) [ "${choice:-0}" -gt 0 ] && toggle_fav "${walls[choice - 1]}"; continue ;;
+            11)
+                cats="$(list_walls | while IFS= read -r f; do category_of "$f"; done | sort -u)"
+                cat="$(printf 'all\n%s\n' "$cats" | amenu "Category")" || cat=all
+                [ -n "$cat" ] || cat=all
+                continue ;;
+            12)
+                if [ "$(cmd_slideshow status)" = stopped ]; then cmd_slideshow start "$(cstate_get slideshow_minutes 15)"; else cmd_slideshow stop; fi
+                return 0 ;;
+            *) return 0 ;;
+        esac
+    done
+    out="$(pick_output)" || return 0
+    if [ "$choice" = 0 ]; then
+        set_wall "${walls[RANDOM % ${#walls[@]}]}" "$out"
+    else
+        set_wall "${walls[choice - 1]}" "$out"
+    fi
+}
+
+cmd_step() {  # cmd_step random|next|prev OUTPUT
+    local walls cur idx n
+    mapfile -t walls < <(list_walls)
+    n="${#walls[@]}"
+    [ "$n" -gt 0 ] || { echo "aether-wall: no wallpapers found in: $(wall_dirs | paste -sd' ')" >&2; return 1; }
+    cur="$(cstate_get wallpaper)"
+    idx=-1
+    for i in "${!walls[@]}"; do [ "${walls[$i]}" = "$cur" ] && idx=$i && break; done
+    case "$1" in
+        random)
+            local pick=$((RANDOM % n))
+            [ "$n" -gt 1 ] && [ "$pick" -eq "$idx" ] && pick=$(((pick + 1) % n))
+            set_wall "${walls[$pick]}" "$2" ;;
+        next) set_wall "${walls[$(((idx + 1) % n))]}" "$2" ;;
+        prev)
+            local back
+            back="$(tail -n 2 "$HISTORY" 2>/dev/null | head -n 1 || true)"
+            if [ -n "$back" ] && [ -f "$back" ] && [ "$back" != "$cur" ]; then set_wall "$back" "$2"
+            else set_wall "${walls[$(((idx - 1 + n) % n))]}" "$2"; fi ;;
+    esac
+}
+
+cmd_restore() {
+    local f o any=0
+    while IFS= read -r o; do
+        f="$(cstate_get "wall_$o")"
+        [ -n "$f" ] && [ -f "$f" ] || continue
+        QUIET=1 set_wall "$f" "$o" 0 && any=1
+    done < <(outputs)
+    if [ "$any" -eq 0 ]; then
+        f="$(cstate_get wallpaper)"
+        if [ -n "$f" ] && [ -f "$f" ]; then QUIET=1 set_wall "$f" "" 0
+        else QUIET=1 cmd_step random ""; fi
+    fi
+}
+
+cmd_slideshow() {
+    case "${1:-status}" in
+        start)
+            local mins="${2:-15}"
+            [[ "$mins" =~ ^[0-9]+$ ]] && [ "$mins" -ge 1 ] || { echo "minutes must be a whole number >= 1" >&2; return 2; }
+            cmd_slideshow stop >/dev/null
+            mkdir -p "$CLASSIC_RUNTIME"
+            setsid -f "$(readlink -f "${BASH_SOURCE[0]}")" _slideshow-loop "$mins" >/dev/null 2>&1
+            cstate_set slideshow "$mins"
+            notify "Slideshow on" "A new wallpaper every $mins min" media-playlist-shuffle ;;
+        stop)
+            if [ -f "$PIDFILE" ]; then kill "$(cat "$PIDFILE")" 2>/dev/null || true; rm -f "$PIDFILE"; fi
+            cstate_set slideshow 0
+            echo "slideshow stopped" ;;
+        status)
+            if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then echo "running, every $(cstate_get slideshow) min"; else echo "stopped"; fi ;;
+        *) usage; return 2 ;;
+    esac
+}
+
+parse_output() {  # parse_output ARGS… -> prints output name given with --output
+    while [ $# -gt 0 ]; do
+        [ "$1" = "--output" ] && { echo "${2:-}"; return; }
+        shift
+    done
+}
+
+cmd="${1:-help}"; [ $# -gt 0 ] && shift
+case "$cmd" in
+    select) cmd_select ;;
+    set) [ $# -ge 1 ] || { usage; exit 2; }; set_wall "$1" "$(parse_output "$@")" ;;
+    random|next|prev) cmd_step "$cmd" "$(parse_output "$@")" ;;
+    restore) cmd_restore ;;
+    slideshow) cmd_slideshow "$@" ;;
+    _slideshow-loop)
+        echo $$ > "$PIDFILE"
+        while sleep "$(( ${1:-15} * 60 ))"; do QUIET=1 cmd_step random "" || true; done ;;
+    check) cmd_check ;;
+    resize)
+        case "${1:-}" in crop|fit|no) cstate_set wall_resize "$1"; echo "resize: $1" ;; *) echo "use crop, fit or no" >&2; exit 2 ;; esac ;;
+    battery-video)
+        case "${1:-}" in yes|no) cstate_set video_on_battery "$1" ;; *) echo "use yes or no" >&2; exit 2 ;; esac ;;
+    list) list_walls ;;
+    current) cstate_get wallpaper ;;
+    thumb)
+        f="${1:-$(cstate_get wallpaper)}"
+        [ -n "$f" ] && [ -f "$f" ] || exit 1
+        thumb_for "$f" ;;
+    history) cat "$HISTORY" 2>/dev/null || true ;;
+    favourite) [ -f "${1:-}" ] || { echo "usage: aether-wall favourite FILE" >&2; exit 2; }; toggle_fav "$(readlink -f "$1")"; is_fav "$(readlink -f "$1")" && echo "★ added" || echo "removed" ;;
+    favourites) cat "$FAVS" 2>/dev/null || true ;;
+    -h|--help|help) usage ;;
+    *) usage >&2; exit 2 ;;
+esac

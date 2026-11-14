@@ -34,13 +34,17 @@ This document covers the repository as a whole.
                                          │ audit redact · cli + cli_desktop + cli_v1                            │
                                          └───────────────────────────────────────────────────────────────────────┘
 ┌──────────────────────────── Dotfiles & system layer ──────────────────────────────────────┐
-│ install.sh (check · dry-run · install · update · uninstall · rollback)                     │
+│ install.sh (onboarding · check · dry-run · install · update · restore · rollback)          │
+│   functions/  ui (whiptail/plain, live panel) · detect · components · validate · support   │
+│   install-scripts/  dependencies · deploy-dotfiles · services · one file per component     │
+│   update.sh · restore.sh · assets/ (logo, SDDM theme)                                      │
 │ scripts/  lib/common.sh (managed-path list, manifest) · setup-symlinks · backup · restore ·│
 │           rollback · uninstall · build-shaders · doctor     bin/ aether · aether-terminal ·│
 │           aether-record · aether-screenshot · aether-wallpaper                             │
 │ config/hypr (rules.conf / rules-v2.conf, recovery.conf) · kitty · zsh (+ profiles/)       │
 │ system/systemd  aether-shell · aether-shell-safe (OnFailure) · aether-clipboard · aether-idle│
-│ packages/fedora packages · recommended · optional · advanced · repos.conf (COPR, consent) │
+│ packages/fedora packages (core) · components.tsv · recommended · optional · advanced ·    │
+│                 repos.conf (COPR, consent)                                                 │
 └────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 

@@ -15,13 +15,13 @@ failed=0
 pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1"; failed=1; }
 
-for f in "$HYPR_DIR"/*.conf; do
+for f in "$HYPR_DIR"/*.conf "$HYPR_DIR"/interfaces/*.conf; do
     open=$(grep -o '{' "$f" | wc -l || true)
     close=$(grep -o '}' "$f" | wc -l || true)
     if [ "$open" -eq "$close" ]; then
-        pass "$(basename "$f") braces balanced ($open/$close)"
+        pass "${f#"$HYPR_DIR"/} braces balanced ($open/$close)"
     else
-        fail "$(basename "$f") braces unbalanced ($open open, $close close)"
+        fail "${f#"$HYPR_DIR"/} braces unbalanced ($open open, $close close)"
     fi
 done
 
@@ -36,6 +36,16 @@ for f in "$HYPR_DIR"/*.conf; do
             fail "hyprland.conf sources $name directly (it must come from compat.conf)"
         else
             pass "$name is version-selected via compat.conf"
+        fi
+        continue
+    fi
+    # hyprlock.conf / hypridle.conf belong to those programs (their default
+    # paths), not to Hyprland: they must never be sourced.
+    if [ "$name" = "hyprlock.conf" ] || [ "$name" = "hypridle.conf" ]; then
+        if grep -qE "^\s*source\s*=.*$name" "$CONF"; then
+            fail "hyprland.conf sources $name (it is ${name%.conf}'s own config)"
+        else
+            pass "$name is standalone (read by ${name%.conf})"
         fi
         continue
     fi
@@ -74,11 +84,13 @@ for frag in hardware.conf compat.conf profile.conf; do
     fi
 done
 
-last_source="$(grep -E '^\s*source\s*=' "$CONF" | tail -1)"
-if [[ "$last_source" == *"profile.conf"* ]]; then
-    pass "profile.conf is sourced last (profiles override defaults)"
+# The performance profile overrides every AetherOS default; only the user's
+# own file (user.conf) comes after it, so the user always has the last word.
+last_two="$(grep -E '^\s*source\s*=' "$CONF" | tail -2 | sed 's|.*/||' | tr '\n' ' ')"
+if [ "$last_two" = "profile.conf user.conf " ]; then
+    pass "profile.conf is the last AetherOS fragment, followed only by the user's user.conf"
 else
-    fail "profile.conf must be the last source line (found: $last_source)"
+    fail "the last two source lines must be profile.conf then user.conf (found: $last_two)"
 fi
 
 # hardware.conf sets env vars: it must come before anything that might rely on them.
@@ -147,14 +159,40 @@ if a != b:
 print("PASS: rules.conf and rules-v2.conf cover the same %d namespaces and %d window patterns" % (len(a[0]), len(a[1])))
 PYEOF
 
+# The interface fragment is sourced after keybinds.conf ($mod/$terminal are
+# defined there) and both interface files exist.
+kb_line=$(grep -n "^source = ~/.config/hypr/keybinds.conf" "$CONF" | cut -d: -f1)
+if_line=$(grep -n "^source = ~/.config/aether-shell/hypr/interface.conf" "$CONF" | cut -d: -f1)
+if [ -n "$kb_line" ] && [ -n "$if_line" ] && [ "$if_line" -gt "$kb_line" ]; then
+    pass "interface.conf is sourced after keybinds.conf"
+else
+    fail "hyprland.conf must source interface.conf after keybinds.conf"
+fi
+for i in classic aether; do
+    if [ -f "$HYPR_DIR/interfaces/$i.conf" ] && grep -q "^exec-once" "$HYPR_DIR/interfaces/$i.conf"; then
+        pass "interfaces/$i.conf exists and starts its interface"
+    else
+        fail "interfaces/$i.conf missing or starts nothing"
+    fi
+done
+# shellcheck disable=SC2016 # literal text match
+if grep -q "interface-theme.conf" "$CONF" && grep -qE 'ensure_fragment "\$FRAG_DIR/interface-theme.conf"' "$REPO_DIR/scripts/setup-symlinks.sh"; then
+    pass "interface-theme.conf is sourced and always created"
+else
+    fail "interface-theme.conf must be sourced by hyprland.conf and created by setup-symlinks.sh"
+fi
+
 # Keybinds: no key combination bound twice to different commands, except
-# pairs that are intentionally chained (Hyprland runs both).
-python3 - "$HYPR_DIR/keybinds.conf" <<'PYEOF' || failed=1
+# pairs that are intentionally chained (Hyprland runs both). Checked for the
+# shared keybinds together with each interface's own.
+for iface in classic aether; do
+python3 - "$HYPR_DIR/keybinds.conf" "$HYPR_DIR/interfaces/$iface.conf" "$iface" <<'PYEOF' || failed=1
 import re, sys
 CHAINED = {("ALT", "Tab")}
 seen, bad = {}, []
 mod = "SUPER"
-for line in open(sys.argv[1], encoding="utf-8"):
+lines = open(sys.argv[1], encoding="utf-8").read().splitlines() + open(sys.argv[2], encoding="utf-8").read().splitlines()
+for line in lines:
     line = line.split("#", 1)[0].strip()
     m = re.match(r"^\$mod\s*=\s*(\S+)", line)
     if m:
@@ -169,8 +207,9 @@ for line in open(sys.argv[1], encoding="utf-8"):
     seen.setdefault(key, m.group(3))
 if bad:
     print("FAIL: conflicting keybinds:\n  " + "\n  ".join(bad)); sys.exit(1)
-print("PASS: %d keybinds, no conflicting combinations" % len(seen))
+print("PASS: %s interface: %d keybinds, no conflicting combinations" % (sys.argv[3], len(seen)))
 PYEOF
+done
 
 echo
 if [ "$failed" -eq 0 ]; then

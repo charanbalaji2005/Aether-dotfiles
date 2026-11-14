@@ -1,0 +1,152 @@
+#!/usr/bin/bash
+# aether-island — the island of the classic "home" look (a Waybar bar).
+#
+# It sizes itself to what is happening, without hovering:
+#   idle            a small black pill with the time
+#   music playing   it opens into a card: album art; title and artist over
+#                   previous / play-pause / next; and on the right two lines of
+#                   upcoming events (khal or calcurse), or the date when no
+#                   calendar is set up
+#   volume/bright.  for ~2 s it shows a level bar instead (aether-osd triggers it)
+# Everything is event-driven: player changes and the OSD send Waybar SIGRTMIN+12.
+#
+#   aether-island follow | art | title | artist | ctl prev|play|next | osd | ev 1|2
+#   aether-island show-osd ICON PERCENT LABEL      (called by aether-osd)
+#   aether-island sync                             show/hide the island Waybar to match
+#   settings (aether-settings → Island): island_mode (auto = only while useful | always),
+#   island_clock (24|12), island_events (auto|off), island_osd (on|off)
+set -uo pipefail
+# shellcheck source=SCRIPTDIR/../lib/classic.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/classic.sh"
+
+CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/aether/island"
+mkdir -p "$CACHE"
+OSD="$CACHE/osd"
+
+out() {  # out TEXT CLASS [TOOLTIP]
+    python3 -I -c 'import json, sys; print(json.dumps({"text": sys.argv[1], "class": sys.argv[2], "alt": sys.argv[2], "tooltip": sys.argv[3]}, ensure_ascii=False))' "$1" "$2" "${3:-}"
+}
+empty() { out "" idle; }
+
+meta() { playerctl metadata --format "$1" 2>/dev/null; }
+
+playing() { case "$(playerctl status 2>/dev/null)" in Playing|Paused) return 0 ;; *) return 1 ;; esac; }
+
+osd_active() {
+    [ -f "$OSD" ] || return 1
+    local until; until="$(cut -d'|' -f1 "$OSD")"
+    [ "$(date +%s%3N)" -lt "${until:-0}" ]
+}
+
+# Visibility: the island Waybar starts hidden; show it only while it is useful
+# (music, a level change) unless island_mode=always. SIGUSR1 toggles a Waybar,
+# so the current state is tracked in $CACHE/visible.
+sync_vis() {
+    local pidf="$CLASSIC_RUNTIME/waybar-island.pid" want=0 have_=0 pid
+    [ -s "$pidf" ] || return 0
+    pid="$(cat "$pidf")"
+    kill -0 "$pid" 2>/dev/null || return 0
+    if [ "$(cstate_get island_mode auto)" = always ] || playing || osd_active; then want=1; fi
+    [ -f "$CACHE/visible" ] && have_=1
+    if [ "$want" != "$have_" ]; then
+        kill -USR1 "$pid" 2>/dev/null || return 0
+        if [ "$want" = 1 ]; then : > "$CACHE/visible"; else rm -f "$CACHE/visible"; fi
+    fi
+}
+
+clock() { if [ "$(cstate_get island_clock 24)" = 12 ]; then date +%-I:%M; else date +%H:%M; fi; }
+
+fetch_art() {  # fetch_art URL -> $CACHE/art.png (or none)
+    local url="$1" key src im
+    [ -n "$url" ] || { rm -f "$CACHE/art.png"; return; }
+    key="$(printf '%s' "$url" | md5sum | cut -c1-16)"
+    if [ ! -s "$CACHE/$key.png" ]; then
+        case "$url" in
+            file://*) src="$(python3 -I -c 'import sys, urllib.parse; print(urllib.parse.unquote(sys.argv[1][7:]))' "$url")" ;;
+            http://*|https://*) src="$CACHE/$key.dl"; curl -fsS --max-time 6 -o "$src" "$url" 2>/dev/null || src="" ;;
+            *) src="" ;;
+        esac
+        im="$(command -v magick || command -v convert || true)"
+        if [ -n "$src" ] && [ -f "$src" ] && [ -n "$im" ]; then
+            "$im" "${src}[0]" -thumbnail '128x128^' -gravity center -extent 128x128 \
+                \( +clone -alpha extract -draw 'fill black polygon 0,0 0,18 18,0 fill white circle 18,18 18,0' \
+                \( +clone -flip \) -compose Multiply -composite \( +clone -flop \) -compose Multiply -composite \) \
+                -alpha off -compose CopyOpacity -composite "$CACHE/$key.png" 2>/dev/null || true
+        fi
+        rm -f "$CACHE/$key.dl"
+    fi
+    if [ -s "$CACHE/$key.png" ]; then ln -sfn "$CACHE/$key.png" "$CACHE/art.png"; else rm -f "$CACHE/art.png"; fi
+}
+
+events() {  # up to two lines of upcoming events, or the date
+    local lines=""
+    if [ "$(cstate_get island_events auto)" != off ]; then
+        if have khal; then
+            lines="$(timeout 3 khal list now 7d --day-format '' --format '{start-date} {start-time}-{end-time}  {title}' 2>/dev/null | sed '/^\s*$/d' | head -n 2)"
+        elif have calcurse; then
+            lines="$(timeout 3 calcurse -r7 --format-apt ' %(start:%d %b %H:%M)-%(end:%H:%M)  %m\n' --format-event ' %m\n' 2>/dev/null | sed -n 's/^ //p' | head -n 2)"
+        fi
+    fi
+    if [ -z "$lines" ]; then
+        lines="$(date '+%a %d %b')"$'\n'"$(clock)"
+    fi
+    sed -n "${1}p" <<< "$lines" | cut -c1-30
+}
+
+case "${1:-}" in
+    follow)
+        pill() {
+            sync_vis
+            if playing || osd_active; then empty; else out "$(clock)" idle "$(date '+%A, %d %B')"; fi
+        }
+        if ! have playerctl; then while true; do pill; sleep 20; done; fi
+        # The read times out every 20 s (to refresh the clock); the follower it
+        # read from must be stopped then, or each timeout leaks a playerctl.
+        follower=""
+        trap '[ -n "$follower" ] && kill "$follower" 2>/dev/null; exit 0' EXIT INT TERM HUP
+        while true; do
+            pill
+            exec {pfd}< <(exec playerctl --follow metadata --format '{{ status }}{{ title }}{{ mpris:artUrl }}' 2>/dev/null)
+            follower=$!
+            while IFS= read -r -t 20 -u "$pfd" _line; do
+                fetch_art "$(meta '{{ mpris:artUrl }}')"
+                pkill -RTMIN+12 -x waybar 2>/dev/null || true
+                pill
+            done
+            exec {pfd}<&-
+            kill "$follower" 2>/dev/null || true
+            wait "$follower" 2>/dev/null || true
+            follower=""
+            pill
+        done ;;
+    art) if playing && ! osd_active && [ -s "$CACHE/art.png" ]; then readlink -f "$CACHE/art.png"; else echo ""; fi ;;
+    title) if playing && ! osd_active; then t="$(meta '{{ title }}')"; out "${t:0:30}" playing "$t"; else empty; fi ;;
+    artist) if playing && ! osd_active; then a="$(meta '{{ artist }}')"; out "${a:0:34}" playing "$a"; else empty; fi ;;
+    ctl)
+        if ! playing || osd_active; then empty; exit 0; fi
+        case "${2:-}" in
+            prev) out "󰒮" playing Previous ;;
+            next) out "󰒭" playing Next ;;
+            play) if [ "$(playerctl status 2>/dev/null)" = Playing ]; then out "󰏤" playing Pause; else out "󰐊" paused Play; fi ;;
+            *) empty ;;
+        esac ;;
+    ev) if playing && ! osd_active; then out "$(events "${2:-1}")" "ev${2:-1}"; else empty; fi ;;
+    osd)
+        if osd_active; then
+            IFS='|' read -r _ icon pct label < "$OSD"
+            n=$(( pct / 10 )); bar=""
+            for i in $(seq 1 10); do if [ "$i" -le "$n" ]; then bar+="━"; else bar+="─"; fi; done
+            out "$icon  $bar  $pct%" osd "$label $pct%"
+        else empty; fi ;;
+    show-osd)
+        [ "$(cstate_get island_osd on)" = on ] || exit 0
+        printf '%s|%s|%s|%s\n' "$(( $(date +%s%3N) + 2200 ))" "${2:-󰕾}" "${3:-0}" "${4:-Volume}" > "$OSD"
+        pkill -RTMIN+12 -x waybar 2>/dev/null || true
+        sync_vis
+        # Collapse (and hide, if nothing else is going on) after ~2 s.
+        ( sleep 2.4; pkill -RTMIN+12 -x waybar 2>/dev/null; "$0" sync ) >/dev/null 2>&1 &
+        ;;
+    sync) sync_vis ;;
+    -h|--help|help|"") sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+    *) echo "usage: aether-island follow|art|title|artist|ctl X|osd|ev N|show-osd ICON PCT LABEL" >&2; exit 2 ;;
+esac

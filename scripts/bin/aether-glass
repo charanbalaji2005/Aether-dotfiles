@@ -1,0 +1,67 @@
+#!/usr/bin/bash
+# aether-glass — how much frosted glass the desktop uses (default: acrylic).
+#
+#   aether-glass off | subtle | acrylic | deep     set it (applies live in Hyprland)
+#   aether-glass status
+#
+# Writes ~/.config/aether-shell/hypr/glass.conf (blur strength and window
+# translucency; sourced before the visual profile, so `aether performance
+# hyprland battery` still turns effects off) and re-generates the colours so
+# Rofi, SwayNC, the Control Centre and Settings use matching translucency.
+# Every app window is translucent; video players and games stay opaque, and
+# terminals (kitty) set their own background translucency so text stays sharp.
+set -euo pipefail
+# shellcheck source=SCRIPTDIR/../lib/classic.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/classic.sh"
+
+FRAG="${XDG_CONFIG_HOME:-$HOME/.config}/aether-shell/hypr/glass.conf"
+
+values() {  # values LEVEL -> size passes vibrancy active inactive
+    case "$1" in
+        off) echo "4 1 0.10 1.0 1.0" ;;
+        subtle) echo "7 2 0.15 0.95 0.90" ;;
+        acrylic) echo "10 3 0.20 0.90 0.84" ;;
+        deep) echo "12 4 0.24 0.82 0.74" ;;
+        *) return 1 ;;
+    esac
+}
+
+write() {
+    local lvl="$1" size passes vib act inact tmp
+    read -r size passes vib act inact <<< "$(values "$lvl")"
+    mkdir -p "$(dirname "$FRAG")"
+    tmp="$(mktemp -p "$(dirname "$FRAG")")"
+    cat > "$tmp" <<CONF
+# Written by aether-glass ($lvl). Change with: aether-glass off|subtle|acrylic|deep
+decoration {
+    active_opacity = $act
+    inactive_opacity = $inact
+    blur {
+        enabled = $([ "$lvl" = off ] && echo false || echo true)
+        size = $size
+        passes = $passes
+        vibrancy = $vib
+        popups = true
+        special = true
+        new_optimizations = true
+        xray = false
+    }
+}
+CONF
+    mv "$tmp" "$FRAG"
+    if in_hyprland; then
+        hyprctl --batch "keyword decoration:active_opacity $act; keyword decoration:inactive_opacity $inact; keyword decoration:blur:enabled $([ "$lvl" = off ] && echo false || echo true); keyword decoration:blur:size $size; keyword decoration:blur:passes $passes; keyword decoration:blur:vibrancy $vib" >/dev/null || true
+    fi
+}
+
+case "${1:-status}" in
+    off|subtle|acrylic|deep)
+        cstate_set glass "$1"
+        write "$1"
+        aether-colors apply >/dev/null 2>&1 || true
+        echo "glass: $1" ;;
+    status) cstate_get glass acrylic ;;
+    init) if ! grep -qs aether-glass "$FRAG"; then write "$(cstate_get glass acrylic)"; fi ;;
+    -h|--help|help) sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' ;;
+    *) echo "usage: aether-glass off|subtle|acrylic|deep|status" >&2; exit 2 ;;
+esac

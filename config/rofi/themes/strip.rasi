@@ -1,0 +1,10 @@
+/* AetherOS classic — "strip" launcher: a slim terminal-like list with a
+   prompt, no icons, square corners. Used by the Retro and Pixel looks. */
+@import "base.rasi"
+window { width: 560px; border-radius: 6px; border: 2px; border-color: @accent; }
+mainbox { padding: 10px; spacing: 8px; children: [ inputbar, listview ]; }
+inputbar { border-radius: 4px; padding: 8px 10px; children: [ prompt, textbox-sep, entry ]; }
+textbox-sep { expand: false; content: "›"; text-color: @accent2; }
+listview { lines: 10; spacing: 2px; }
+element { border-radius: 3px; padding: 5px 10px; }
+element-icon { size: 0; }

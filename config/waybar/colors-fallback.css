@@ -1,0 +1,24 @@
+/* Graphite palette, used only when Waybar is started by hand without the
+   generated style (~/.config/aether-shell/classic/waybar/style.css). */
+@define-color bg #101218;
+@define-color fg #e4e7f0;
+@define-color surface #1a1c22;
+@define-color surface2 #23252c;
+@define-color surface3 #2e3037;
+@define-color border #3f4148;
+@define-color text #e4e7f0;
+@define-color subtext #a3a6ae;
+@define-color muted #7a7c84;
+@define-color accent #7f9cf5;
+@define-color accent2 #b48cf2;
+@define-color on_accent #101218;
+@define-color urgent #f2777a;
+@define-color ok #8fd18a;
+@define-color warn #ebc47a;
+@define-color info #6fd0d8;
+@define-color red #f2777a;
+@define-color green #8fd18a;
+@define-color yellow #ebc47a;
+@define-color blue #7f9cf5;
+@define-color magenta #b48cf2;
+@define-color cyan #6fd0d8;

@@ -1,0 +1,17 @@
+# AetherOS classic — Pyprland (drop-down terminal, zoom). Started by
+# aether-classic-start when `pypr` is installed (pipx install pyprland).
+
+[pyprland]
+plugins = ["scratchpads", "magnify"]
+
+[scratchpads.term]
+animation = "fromTop"
+command = "kitty --class aether-dropterm"
+class = "aether-dropterm"
+size = "70% 55%"
+max_size = "1800px 100%"
+margin = 40
+lazy = true
+
+[magnify]
+factor = 2.0

@@ -92,6 +92,6 @@ that's a later phase (see PROGRESS.md).
 
 ## License
 
-Copyright (C) 2026 Charan Balaji. All rights reserved.
+Copyright (C) 2026 Neelampalli Charan Balaji. Licensed under GPL-3.0-or-later.
 
 Licensed under GPL-3.0-or-later — see [LICENSE](./LICENSE).

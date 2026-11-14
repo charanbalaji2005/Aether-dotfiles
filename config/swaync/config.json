@@ -1,0 +1,72 @@
+{
+  "$schema": "/etc/xdg/swaync/configSchema.json",
+  "positionX": "right",
+  "positionY": "top",
+  "layer": "overlay",
+  "control-center-layer": "top",
+  "layer-shell": true,
+  "cssPriority": "user",
+  "control-center-margin-top": 10,
+  "control-center-margin-bottom": 8,
+  "control-center-margin-right": 10,
+  "control-center-margin-left": 0,
+  "control-center-width": 420,
+  "control-center-height": 760,
+  "fit-to-screen": false,
+  "notification-2fa-action": true,
+  "notification-inline-replies": true,
+  "notification-icon-size": 44,
+  "notification-body-image-height": 140,
+  "notification-body-image-width": 220,
+  "notification-window-width": 380,
+  "timeout": 6,
+  "timeout-low": 3,
+  "timeout-critical": 0,
+  "keyboard-shortcuts": true,
+  "image-visibility": "when-available",
+  "transition-time": 200,
+  "hide-on-clear": false,
+  "hide-on-action": true,
+  "script-fail-notify": true,
+  "notification-visibility": {
+    "aether-osd-low-priority": {
+      "state": "transient",
+      "urgency": "Low",
+      "app-name": "AetherOS"
+    }
+  },
+  "widgets": [
+    "title",
+    "dnd",
+    "buttons-grid",
+    "volume",
+    "backlight",
+    "mpris",
+    "notifications"
+  ],
+  "widget-config": {
+    "title": {
+      "text": "Notifications",
+      "clear-all-button": true,
+      "button-text": "Clear all"
+    },
+    "dnd": { "text": "Do not disturb" },
+    "mpris": { "image-size": 72, "image-radius": 12 },
+    "volume": { "label": "󰕾", "show-per-app": true },
+    "backlight": { "label": "󰃠", "device": "" },
+    "buttons-grid": {
+      "actions": [
+        { "label": "󰖩", "tooltip": "Wi-Fi", "command": "sh -c 'swaync-client -cp; aether-menu wifi'" },
+        { "label": "󰂯", "tooltip": "Bluetooth", "command": "sh -c 'swaync-client -cp; aether-menu bluetooth'" },
+        { "label": "󰓃", "tooltip": "Audio devices", "command": "sh -c 'swaync-client -cp; aether-menu audio'" },
+        { "label": "󰛨", "tooltip": "Night light", "command": "aether-toggle nightlight" },
+        { "label": "󰔎", "tooltip": "Dark / light", "command": "aether-colors mode toggle" },
+        { "label": "󰊴", "tooltip": "Game mode", "command": "aether-toggle gamemode" },
+        { "label": "󰄀", "tooltip": "Screenshot", "command": "sh -c 'swaync-client -cp; sleep 0.4; aether-shot area'" },
+        { "label": "󰸉", "tooltip": "Wallpaper", "command": "sh -c 'swaync-client -cp; aether-wall select'" },
+        { "label": "󰒓", "tooltip": "Quick settings", "command": "sh -c 'swaync-client -cp; aether-menu settings'" },
+        { "label": "󰐥", "tooltip": "Power menu", "command": "sh -c 'swaync-client -cp; aether-powermenu'" }
+      ]
+    }
+  }
+}

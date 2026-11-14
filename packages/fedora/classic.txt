@@ -1,0 +1,64 @@
+# Classic interface (Waybar · Rofi · SwayNC · Wlogout · Hyprlock · Hypridle · swww)
+# — installed with --interface classic (the default) in every mode.
+# "a|b" means: the first of these that your repositories offer (package
+# names differ between Fedora releases). Anything unavailable is reported
+# and skipped; `aether-interface doctor` says what each missing one costs.
+
+# Bar, launcher, notifications, session
+waybar
+rofi-wayland|rofi
+SwayNotificationCenter
+wlogout
+hyprlock
+hypridle
+swww
+
+# Audio, light, media
+pavucontrol
+pulseaudio-utils
+pamixer
+playerctl
+brightnessctl
+hyprsunset
+
+# Network and Bluetooth tray + managers
+network-manager-applet
+blueman
+bluez
+
+# Screenshots and clipboard
+grim
+slurp
+swappy
+wl-clipboard
+cliphist
+
+# Files
+Thunar
+thunar-archive-plugin
+thunar-volman
+tumbler
+file-roller
+gvfs
+
+# Theming
+ImageMagick
+nwg-look
+qt5ct
+qt6ct
+kvantum
+papirus-icon-theme
+adw-gtk3-theme
+
+# Utilities used by menus and modules
+libnotify
+jq
+qalculate
+yad
+power-profiles-daemon|tuned-ppd
+fontconfig
+
+# Control Centre panel as a blurred layer surface
+gtk-layer-shell
+python3-gobject
+python3-cairo

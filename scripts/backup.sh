@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S-%N)"
 BACKUP_ROOT="$HOME/.aetheros-backups"
 BACKUP_DIR="$BACKUP_ROOT/$TIMESTAMP"
@@ -20,6 +20,8 @@ TARGETS+=(
     "$HOME/.config/aether-shell/terminal"
     "$HOME/.config/aether-shell/layouts.json"
     "$HOME/.config/aether-shell/profiles"
+    "$HOME/.config/aether-shell/interface"
+    "$HOME/.config/aether-shell/classic/state.conf"
 )
 
 mkdir -p "$BACKUP_DIR"
@@ -54,6 +56,7 @@ done
 
 if [ "$copied" -eq 0 ]; then
     echo "Nothing found to back up (no configs at the managed paths yet)."
+    # Best effort: remove the staging directory only if it ended up empty.
     rmdir "$BACKUP_DIR" 2>/dev/null || true
     exit 0
 fi

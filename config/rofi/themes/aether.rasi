@@ -1,0 +1,24 @@
+/* AetherOS classic — launcher: a side panel of modes beside the results. */
+@import "base.rasi"
+window { width: 820px; }
+mainbox { orientation: horizontal; children: [ box-side, box-results ]; spacing: 16px; }
+box-side {
+    orientation: vertical;
+    expand: false;
+    width: 190px;
+    spacing: 12px;
+    children: [ textbox-banner, mode-switcher ];
+}
+textbox-banner {
+    expand: false;
+    padding: 16px 12px;
+    border-radius: 14px;
+    background-color: @accent;
+    text-color: @on-accent;
+    content: "󱓞  AetherOS";
+    font: "JetBrainsMono Nerd Font Bold 13";
+}
+mode-switcher { orientation: vertical; expand: false; }
+button { horizontal-align: 0; padding: 10px 14px; }
+box-results { expand: true; orientation: vertical; spacing: 12px; children: [ inputbar, message, listview ]; }
+listview { lines: 9; columns: 1; }

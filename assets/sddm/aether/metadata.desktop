@@ -1,0 +1,15 @@
+[SddmGreeterTheme]
+Name=AetherOS
+Description=AetherOS login screen — clock, wallpaper and a frosted login card
+Author=Neelampalli Charan Balaji
+Copyright=(C) 2026 Neelampalli Charan Balaji
+License=GPL-3.0-or-later
+Type=sddm-theme
+Version=1.0.0
+Website=https://github.com/charanbalaji2005/Aether-dotfiles
+MainScript=Main.qml
+ConfigFile=theme.conf
+TranslationsDirectory=translations
+Theme-Id=aether
+Theme-API=2.0
+QtVersion=6

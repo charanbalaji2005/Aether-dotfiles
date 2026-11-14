@@ -23,7 +23,7 @@ import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from .util import Context, config_dir, state_dir
+from .util import get_logger, Context, config_dir, state_dir
 
 MIN_W, MIN_H = 320, 200
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
@@ -269,13 +269,16 @@ def apply(ctx: Context, name: str, monitor: Optional[str] = None, launch: bool =
             errors += ["%s: %s" % (s["role"], e) for e in errs]
         else:
             placed.append(s["role"])
+    undo_saved = True
     try:
         os.makedirs(state_dir(), exist_ok=True)
         with open(undo_file(), "w", encoding="utf-8") as fh:
             json.dump({"layout": name, "windows": undo}, fh)
-    except OSError:
-        pass
-    return {"ok": not errors, "layout": name, "monitor": p["monitor"], "placed": placed, "launched": launched,
+    except OSError as exc:
+        # The layout is applied either way; say that it can't be undone.
+        undo_saved = False
+        get_logger().warning("layout %s applied, but the undo file couldn't be written: %s", name, exc)
+    return {"ok": not errors, "undoAvailable": undo_saved, "layout": name, "monitor": p["monitor"], "placed": placed, "launched": launched,
             "skipped": skipped, "errors": errors}
 
 

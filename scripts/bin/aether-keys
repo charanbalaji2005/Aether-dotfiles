@@ -1,0 +1,11 @@
+#!/usr/bin/bash
+# aether-keys — the keyboard-shortcut viewer (GTK 3), Super+H.
+#   aether-keys          (Escape closes; type to filter)
+# Without GTK for Python it falls back to the Rofi list (aether-menu keys).
+set -euo pipefail
+LIB="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../lib" && pwd)"
+if ! python3 -c 'import gi; gi.require_version("Gtk", "3.0"); from gi.repository import Gtk' >/dev/null 2>&1; then
+    echo "aether-keys: GTK 3 for Python is missing (sudo dnf install python3-gobject gtk3) — opening the list instead" >&2
+    exec "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/aether-menu" keys
+fi
+exec python3 -I -c 'import sys; sys.path.insert(0, sys.argv.pop(1)); from aether.keys_app import main; sys.exit(main(sys.argv[1:]))' "$LIB" "$@"

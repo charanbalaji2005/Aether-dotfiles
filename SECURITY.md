@@ -92,3 +92,14 @@ runs `sudo`).
   this system; stored files can't carry command lines. Commands passed to `hyprctl exec` are
   shell-quoted word by word.
 
+## 1.0.0-rc.2 status
+
+| Area | Verified by | Not yet verified |
+|---|---|---|
+| Lock screen (PAM) | API use checked against Quickshell 0.2.0/0.3.2 source; single unlock path and `start()` failure handling enforced by tests | real PAM unlock, crash re-lock, suspend/resume on hardware |
+| Widgets | trust model and scanner unit-tested | — (by design not a sandbox: trusted widgets only) |
+| Assistant | keyring/stdin/redaction/registry tested against local HTTP servers | real providers |
+
+Use **hyprlock** (Settings → Lock screen) if you need a locker with a longer track record until
+the AetherOS lock screen passes the hardware checklist.
+

@@ -310,7 +310,31 @@ def cmd_widget(ctx: Context, args) -> int:
         res = widgets.install(args.path, force=args.force)
         if res.get("ok"):
             audit.record("user", "widget-install", {"id": res["id"], "permissions": res["permissions"]})
-        return _result(args, res, "Installed %s. Add it in Settings → Widgets." % res.get("id"))
+        return _result(args, res, "Installed %s — NOT trusted yet. Review its files, then: aether widget trust %s" % (res.get("id"), res.get("id")))
+    if sub == "trust":
+        info = next((w for w in widgets.listing() if w["id"] == args.id and w["source"] == "user"), None)
+        if info is None:
+            return _result(args, {"ok": False, "problems": ["no user-installed widget %s" % args.id]})
+        if not args.yes:
+            print("WARNING: widgets run inside the desktop shell. AetherOS checks their code statically,")
+            print("but that is not a sandbox: a malicious widget could misbehave or try to get around")
+            print("the checks. Trust only widgets whose author you trust and whose files you have read.")
+            print("  %s %s — can see: %s" % (info["name"], info["version"], ", ".join(info["permissions"]) or "nothing"))
+            print("  files: %s" % info["path"])
+            if not confirm("Trust this exact version of %s?" % args.id, False):
+                return 1
+        res = widgets.trust(args.id)
+        if res.get("ok"):
+            audit.record("user", "widget-trust", {"id": args.id, "digest": res["digest"], "permissions": res["permissions"]})
+        return _result(args, res, "Trusted %s (pinned to its current files). Third-party widgets must also be allowed in Settings → Widgets." % args.id)
+    if sub == "untrust":
+        res = widgets.untrust(args.id)
+        audit.record("user", "widget-untrust", {"id": args.id})
+        return _result(args, res, "%s is no longer trusted and was removed from the desktop." % args.id)
+    if sub == "disable-third-party":
+        res = widgets.disable_third_party()
+        audit.record("user", "widget-disable-third-party", res)
+        return _result(args, res, "Third-party widgets disabled (%d removed from the desktop)." % res["removed"])
     if sub == "remove":
         res = widgets.remove(args.id)
         if res.get("ok"):
@@ -462,6 +486,14 @@ def register(sub, add) -> None:
     x.add_argument("--force", action="store_true")
     x.add_argument("--yes", action="store_true")
     x.add_argument("--json", action="store_true")
+    x = wd.add_parser("trust", help="trust a user-installed widget (pinned to its current files)")
+    x.add_argument("id")
+    x.add_argument("--yes", action="store_true")
+    x.add_argument("--json", action="store_true")
+    x = wd.add_parser("untrust")
+    x.add_argument("id")
+    x.add_argument("--json", action="store_true")
+    wd.add_parser("disable-third-party", help="recovery: stop loading all non-built-in widgets").add_argument("--json", action="store_true")
     x = wd.add_parser("remove")
     x.add_argument("id")
     x.add_argument("--json", action="store_true")

@@ -12,7 +12,7 @@
 # Needs `qsb` (Fedora: qt6-qtshadertools). Exits 1 if it's missing.
 
 set -euo pipefail
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 SRC="$REPO_DIR/config/quickshell/aether-shell/graphics/shaders"
 OUT="${AETHER_SHADER_OUT:-${XDG_CACHE_HOME:-$HOME/.cache}/aether-shell/shaders}"
 

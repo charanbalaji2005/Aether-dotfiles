@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# hyprctl compatibility shim for Hyprland 0.57+ (Lua configuration).
+#
+# Hyprland 0.57 dropped `hyprctl keyword` and made `hyprctl dispatch` take
+# Lua. AetherOS scripts, Waybar, Quickshell and hypridle still use the old
+# forms, so this shim (installed ahead of /usr/bin in PATH) rewrites them to
+# the `aether` Lua API defined by ~/.config/hypr/lua/aether_compat.lua:
+#
+#   hyprctl keyword general:gaps_in 8     -> dispatch 'aether.keyword(...)'
+#   hyprctl dispatch workspace e+1        -> dispatch 'aether.dispatch(...)'
+#   hyprctl --batch "keyword a 1; dispatch b"   (each command translated)
+#
+# Lua dispatch strings (`hyprctl dispatch 'hl.dsp.exit()'`) and every other
+# request pass through unchanged.
+
+real=""
+for p in /usr/bin/hyprctl /usr/local/bin/hyprctl; do
+    [ -x "$p" ] && [ "$p" != "$(readlink -f "$0")" ] && { real="$p"; break; }
+done
+[ -n "$real" ] || { echo "hyprctl shim: real hyprctl not found" >&2; exit 127; }
+
+# Only translate while the AetherOS Lua layer is loaded.
+lua_mode() {
+    [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/hypr/lua/aether_compat.lua" ] &&
+        [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/hypr/hyprland.lua" ]
+}
+
+# Lua long-bracket quoting, safe for any content without "]==]".
+lq() { printf '[==[%s]==]' "$1"; }
+
+# Translate one command (words in "$@") into args for the real hyprctl.
+# Prints the args NUL-separated.
+translate() {
+    local req="$1"; shift || true
+    case "$req" in
+        keyword)
+            local key="$1"; shift || true
+            printf '%s\0' dispatch "aether.keyword($(lq "$key"), $(lq "$*"))" ;;
+        dispatch)
+            # Legacy form only; callers pass Lua expressions through untouched.
+            local name="$1"; shift || true
+            printf '%s\0' dispatch "aether.dispatch($(lq "$name"), $(lq "$*"))" ;;
+        *)
+            printf '%s\0' "$req" "$@" ;;
+    esac
+}
+
+run_translated() {
+    local -a pre=("${flags[@]}") args=()
+    while IFS= read -r -d '' a; do args+=("$a"); done < <(translate "$@")
+    "$real" "${pre[@]}" "${args[@]}"
+}
+
+lua_mode || exec "$real" "$@"
+
+# Leading flags (-j, -r, -q, -i <instance>, --instance <x>) are kept as is.
+flags=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -i|--instance) flags+=("$1" "$2"); shift 2 ;;
+        --batch) break ;;
+        -*) flags+=("$1"); shift ;;
+        *) break ;;
+    esac
+done
+
+if [ "${1:-}" = "--batch" ]; then
+    shift
+    rc=0
+    IFS=';' read -r -a cmds <<< "$*"
+    for c in "${cmds[@]}"; do
+        read -r -a words <<< "$c"
+        [ ${#words[@]} -gt 0 ] || continue
+        # keyword values may contain spaces: keep everything after the key.
+        if [ "${words[0]}" = keyword ]; then
+            rest="${c#*keyword}"; rest="${rest#"${rest%%[![:space:]]*}"}"
+            key="${rest%%[[:space:]]*}"; val="${rest#"$key"}"; val="${val#"${val%%[![:space:]]*}"}"
+            run_translated keyword "$key" "$val" || rc=$?
+        elif [ "${words[0]}" = dispatch ]; then
+            rest="${c#*dispatch}"; rest="${rest#"${rest%%[![:space:]]*}"}"
+            name="${rest%%[[:space:]]*}"; arg="${rest#"$name"}"; arg="${arg#"${arg%%[![:space:]]*}"}"
+            if [[ "$name" =~ ^[a-z]+$ ]]; then run_translated dispatch "$name" "$arg" || rc=$?
+            else "$real" "${flags[@]}" dispatch "$rest" || rc=$?; fi
+        else
+            run_translated "${words[@]}" || rc=$?
+        fi
+    done
+    exit "$rc"
+fi
+
+case "${1:-}" in
+    keyword)
+        shift; key="${1:-}"; shift || true
+        run_translated keyword "$key" "$*" ;;
+    dispatch)
+        shift; name="${1:-}"; shift || true
+        if [[ "$name" =~ ^[a-z]+$ ]]; then run_translated dispatch "$name" "$*"
+        else exec "$real" "${flags[@]}" dispatch "$name" "$@"; fi ;;
+    *)
+        exec "$real" "${flags[@]}" "$@" ;;
+esac

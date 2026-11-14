@@ -1,0 +1,12 @@
+// AetherOS look "Lofi": a thin, full-width bar with the date and time centred,
+// quiet workspaces on the left and a few status icons on the right.
+{
+    "include": ["~/.config/waybar/modules.jsonc"],
+    "layer": "top",
+    "position": "top",
+    "height": 24,
+    "spacing": 0,
+    "modules-left": ["custom/fedora", "hyprland/workspaces#dots"],
+    "modules-center": ["clock#date", "custom/weather"],
+    "modules-right": ["tray", "pulseaudio", "network", "battery", "custom/notification", "custom/power"]
+}

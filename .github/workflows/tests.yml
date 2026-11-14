@@ -1,11 +1,13 @@
 name: Tests
 
+# Called by ci.yml and release.yml (not triggered on its own, so pushes
+# don't run it twice). Every job is required; nothing here may swallow a
+# failure. Hardware/session checks are NOT here — see docs/HARDWARE.md.
 on:
   workflow_call:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
   hyprland-config:
@@ -116,22 +118,50 @@ jobs:
             diff -q /tmp/new.txt /tmp/old.txt || { echo "::error::$f.qsb is stale: run scripts/build-shaders.sh-style rebuild with Qt 6.7 qsb"; exit 1; }
           done
 
-  fedora-preflight:
-    # Real Fedora: DNF5, real repositories. Runs the read-only preflight and
-    # the dry run as a normal user (the installer refuses root).
+  fedora:
+    # Real Fedora with DNF5 and real repositories, as an unprivileged user
+    # (the installer refuses root): preflight, dry run, the full test suite,
+    # and an RPM build with build dependencies checked.
     runs-on: ubuntu-latest
-    container: fedora:42
+    container: fedora:latest
     steps:
-      - run: dnf -y install git python3 sudo shadow-utils findutils util-linux
+      - run: dnf -y install git python3 sudo shadow-utils findutils util-linux shellcheck rpm-build rpmlint xz tar gzip
       - uses: actions/checkout@v4
       - name: Create an unprivileged user
         run: useradd -m tester && chown -R tester "$GITHUB_WORKSPACE"
       - name: install.sh --check (real package availability via dnf repoquery)
-        run: su tester -c "cd '$GITHUB_WORKSPACE' && ./install.sh --check --mode complete" || true
+        run: su tester -c "cd '$GITHUB_WORKSPACE' && ./install.sh --check --mode complete"
       - name: install.sh --dry-run
         run: su tester -c "cd '$GITHUB_WORKSPACE' && ./install.sh --dry-run --mode recommended"
-      - name: aether CLI on Fedora
-        run: su tester -c "cd '$GITHUB_WORKSPACE' && bash scripts/bin/aether config validate && bash scripts/bin/aether capabilities && bash scripts/bin/aether security"
+      - name: Full test suite as a normal user
+        run: su tester -c "cd '$GITHUB_WORKSPACE' && bash tests/run-all.sh"
+      - name: RPM build on Fedora (build dependencies checked)
+        run: su tester -c "cd '$GITHUB_WORKSPACE' && bash tests/packaging/test_rpm_build.sh"
+
+  packaging:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tarball reproducibility and PKGBUILD package()
+        run: bash tests/packaging/test_tarball_pkgbuild.sh
+      - name: Symlinked entry points (as packages install them)
+        run: bash tests/integration/test_symlinked_entrypoints.sh
+
+  quickshell-api:
+    # Every Quickshell API the shell uses, against Quickshell 0.2.0 and 0.3.2.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install PySide6-Essentials
+      - name: Quickshell API conformance
+        run: |
+          out="$(bash tests/shell/test_quickshell_api.sh)"; rc=$?
+          echo "$out"
+          if grep -q '^SKIPPED' <<< "$out"; then echo "::error::Quickshell source could not be fetched"; exit 1; fi
+          exit $rc
 
   # Explicitly NOT run in CI: anything needing a live Quickshell + Hyprland
   # session (layer-shell surfaces, Hyprland IPC, PipeWire, PAM, GPUs).

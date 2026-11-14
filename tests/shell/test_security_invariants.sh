@@ -57,6 +57,18 @@ if decl != ["root.locked"]:
 if re.search(r"sessionLock\.locked\s*=", code):
     fail("sessionLock.locked is assigned directly")
 
+# 1b. PamContext.start() returns false without emitting a signal when PAM
+# can't start; the result must be checked, and an in-flight conversation
+# aborted when the lock screen goes away.
+if not re.search(r"if\s*\(\s*!\s*pam\.start\(\)\s*\)", code):
+    fail("LockScreen.qml ignores the result of pam.start()")
+elif "pam.abort()" not in code:
+    fail("LockScreen.qml never aborts an in-flight PAM conversation")
+else:
+    print("PASS: pam.start() failure is handled; conversations are aborted on teardown")
+if not re.search(r"pamTimeout", code):
+    fail("no timeout guards a PAM conversation that never answers")
+
 # 2. sh -c scripts are constants
 bad = []
 for d, _, files in os.walk(root):

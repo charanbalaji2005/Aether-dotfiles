@@ -1,0 +1,16 @@
+// AetherOS look "Retro": one dense full-width line of coloured readings
+// separated by thin rules (drawn by the style, so hidden modules leave no gaps) — ghost workspaces, CPU, temperature, memory,
+// clock, network throughput, volume, microphone, power.
+{
+    "include": ["~/.config/waybar/modules.jsonc"],
+    "layer": "top",
+    "position": "top",
+    "height": 30,
+    "margin-top": 4,
+    "margin-left": 8,
+    "margin-right": 8,
+    "spacing": 0,
+    "modules-left": ["custom/fedora", "hyprland/workspaces#ghosts", "cpu#text", "temperature#text", "memory#text", "backlight"],
+    "modules-center": ["idle_inhibitor", "clock#seconds", "custom/weather", "custom/notification"],
+    "modules-right": ["tray", "bluetooth", "network#speed-text", "battery", "pulseaudio", "pulseaudio#mic", "hyprland/language", "custom/power"]
+}

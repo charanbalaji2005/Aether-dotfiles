@@ -1,0 +1,24 @@
+#!/usr/bin/bash
+# aether-calendar — open or close the Date & Time panel (click the bar's clock or weather).
+#   aether-calendar            toggle: live clock, full date, week/day of year, time zone,
+#                              detailed weather and forecast, month calendar, world clocks
+# World clocks: state key world_clocks, e.g. "UTC,Europe/London,Asia/Tokyo".
+set -euo pipefail
+LIB="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../lib" && pwd)"
+# shellcheck source=SCRIPTDIR/../lib/classic.sh
+. "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../lib/classic.sh"
+case "${1:-toggle}" in
+    -h|--help) sed -n '2,5p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+esac
+if pkill -f 'aether\.datetime_panel' 2>/dev/null; then exit 0; fi
+# Closed by this very click (focus left the panel for the bar)? Stay closed.
+closed="${XDG_RUNTIME_DIR:-/tmp}/aether-calendar.closed"
+if [ -e "$closed" ] && [ $(( $(date +%s%3N) - $(stat -c %.3Y "$closed" | tr -d .) )) -lt 600 ]; then exit 0; fi
+if ! python3 -c 'import gi; gi.require_version("Gtk", "3.0"); from gi.repository import Gtk' >/dev/null 2>&1; then
+    echo "aether-calendar: GTK 3 for Python is missing (sudo dnf install python3-gobject gtk3 gtk-layer-shell)" >&2
+    exit 1
+fi
+# Open next to the bar: the "bottom" layout keeps its clock at the bottom edge.
+args=()
+[ "$(cstate_get waybar_layout default)" = bottom ] && args+=(--bottom)
+exec python3 -I -c 'import sys; sys.path.insert(0, sys.argv.pop(1)); from aether.datetime_panel import main; sys.exit(main(sys.argv[1:]))' "$LIB" "${args[@]}"

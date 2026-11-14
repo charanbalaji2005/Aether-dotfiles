@@ -1,0 +1,30 @@
+/* AetherOS classic — Wlogout. Colours come from aether-colors (wrapper
+   generated in ~/.config/aether-shell/classic/wlogout/style.css). */
+* {
+    font-family: "JetBrainsMono Nerd Font", "JetBrains Mono", sans-serif;
+    background-image: none;
+    box-shadow: none;
+    transition: background-color 180ms ease, border-color 180ms ease;
+}
+window { background-color: alpha(@bg, 0.78); }
+button {
+    color: @text;
+    font-size: 16px;
+    font-weight: 700;
+    background-color: alpha(@surface, 0.92);
+    border: 2px solid @border;
+    border-radius: 24px;
+    margin: 6px;
+    background-repeat: no-repeat;
+    background-position: center 40%;
+    background-size: 26%;
+}
+button:focus, button:hover { background-color: @surface3; border-color: @accent; outline-style: none; }
+button:active { background-color: @accent; color: @on_accent; }
+#lock { background-image: image(url("icons/lock.svg")); }
+#logout { background-image: image(url("icons/logout.svg")); }
+#suspend { background-image: image(url("icons/suspend.svg")); }
+#hibernate { background-image: image(url("icons/hibernate.svg")); }
+#reboot { background-image: image(url("icons/reboot.svg")); }
+#shutdown { background-image: image(url("icons/shutdown.svg")); }
+#shutdown:hover, #reboot:hover { border-color: @urgent; }
